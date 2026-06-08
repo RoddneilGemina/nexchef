@@ -30,6 +30,8 @@ function RootLayoutNav() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack screenOptions={{ animation: 'none' }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="post/create" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="recipe/create" options={{ presentation: 'modal' }} />
         <Stack.Screen name="post/[id]" options={{ title: 'Post' }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>

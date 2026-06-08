@@ -1,14 +1,36 @@
-import { StyleSheet, FlatList, View } from 'react-native';
+import { useState, useCallback } from 'react';
+import { StyleSheet, FlatList, View, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Container } from '@/components/ui/container';
 import { TopHeader } from '@/components/ui/top-header';
 import { PostCard } from '@/components/ui/post-card';
-import { MOCK_POSTS } from '@/constants/mock';
 import { Ionicons } from '@expo/vector-icons';
 import { Spacing } from '@/constants/theme';
+import { backendAPI } from '@/services/backend';
+import { Post } from '@/types/post';
 
 export default function HomeScreen() {
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchPosts = async () => {
+    try {
+      const feed = await backendAPI.posts.getFeed();
+      setPosts(feed);
+    } catch (error) {
+      console.error("Error fetching feed:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchPosts();
+    }, [])
+  );
+
   const EndOfFeed = () => (
     <View style={styles.endOfFeedContainer}>
       <View style={styles.iconComposite}>
@@ -23,14 +45,20 @@ export default function HomeScreen() {
   return (
     <ThemedView style={styles.container}>
       <TopHeader />
-      <FlatList
-        data={MOCK_POSTS}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <PostCard post={item} />}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.contentContainer}
-        ListFooterComponent={<EndOfFeed />}
-      />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF8C00" />
+        </View>
+      ) : (
+        <FlatList
+          data={posts}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <PostCard post={item} onPostUpdated={fetchPosts} />}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.contentContainer}
+          ListFooterComponent={<EndOfFeed />}
+        />
+      )}
     </ThemedView>
   );
 }
@@ -38,6 +66,11 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   contentContainer: {
     paddingBottom: 24,

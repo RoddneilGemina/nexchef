@@ -13,6 +13,28 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    // Check active session on mount
+    backendAPI.auth.checkSession()
+      .then(profile => {
+        if (profile) setUser(profile);
+      })
+      .catch(console.error)
+      .finally(() => {
+        setIsReady(true);
+      });
+
+    // Listen for auth state changes (e.g. token refresh, logout from another tab)
+    const { data: { subscription } } = backendAPI.auth.onAuthStateChange((profile) => {
+      setUser(profile);
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, []);
 
   const login = async (username: string, pass: string) => {
     setIsLoading(true);
@@ -24,9 +46,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // If you add backendAPI.auth.logout() later, call it here
     setUser(null);
   };
+
+  if (!isReady) {
+    return null; // Don't render anything until we know the initial auth state
+  }
 
   return (
     <AuthContext.Provider value={{ user, isLoading, login, logout }}>

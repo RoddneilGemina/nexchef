@@ -1,11 +1,45 @@
+export interface RecipeIngredient {
+  id?: string;
+  name: string;
+  quantity: string;
+  unit: string;
+}
+
+export interface RecipeStep {
+  id?: string;
+  step_number?: number;
+  title: string;
+  description: string;
+  duration: string;
+}
+
 export interface Post {
   id: string;
+  user_id: string;
   username: string;
-  userAvatar?: string;
-  imageUrl?: string;
+  userAvatar?: string | null;
+  imageUrl?: string | null;
   caption: string;
   cheers: number;
   comments: number;
   shares: number;
   timestamp: string;
+  updated_at?: string | null;
+  has_cheered?: boolean;
+  post_type?: 'text' | 'recipe';
+  recipe_title?: string | null;
+  recipe_ingredients?: RecipeIngredient[];
+  recipe_steps?: RecipeStep[];
+}
+
+export interface Comment {
+  id: string;
+  post_id: string;
+  user_id: string;
+  parent_id: string | null;
+  content: string;
+  created_at: string;
+  username: string;
+  userAvatar?: string | null;
+  replies?: Comment[];
 }

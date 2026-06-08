@@ -17,9 +17,9 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     try {
       await login(username, password);
-      // Upon successful login, the _layout will automatically re-render and hide this screen,
-      // but we can explicitly replace routing to the tabs just in case.
-      router.replace('/(tabs)');
+      // Removed router.replace.
+      // Because app/_layout.tsx dynamically conditionally renders <Stack> only when `user` is set,
+      // React will automatically unmount this screen and mount the Tabs for us!
     } catch (e: any) {
       if (Platform.OS === 'web') {
         window.alert(e.message);
