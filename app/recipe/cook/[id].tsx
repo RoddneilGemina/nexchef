@@ -40,21 +40,30 @@ export default function CookModeScreen() {
   const [post, setPost] = useState<Post | null>(null);
   const [phase, setPhase] = useState<CookPhase>('loading');
   const [prepChecklist, setPrepChecklist] = useState<boolean[]>([]);
-  const [elapsedTime, setElapsedTime] = useState(0);
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const [stepElapsedTime, setStepElapsedTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [bufferTargetIndex, setBufferTargetIndex] = useState<number | null>(null);
   const warnedSecondsRef = useRef<Set<number>>(new Set());
-  const lastActiveStepRef = useRef<number>(0);
 
   const steps = useMemo(() => {
     return post?.recipe_steps?.sort((a, b) => (a.step_number || 0) - (b.step_number || 0)) || [];
   }, [post]);
 
-  const totalDuration =
-    post?.total_duration ||
-    (steps.length > 0
-      ? (steps[steps.length - 1].start_time || 0) + (steps[steps.length - 1].duration || 0)
-      : 0);
+  const totalDuration = useMemo(() => {
+    return (
+      post?.total_duration ||
+      steps.reduce((acc, step) => acc + (step.duration || 0), 0)
+    );
+  }, [post, steps]);
+
+  const cumulativeElapsedTime = useMemo(() => {
+    let sum = 0;
+    for (let i = 0; i < activeStepIndex && i < steps.length; i++) {
+      sum += steps[i].duration || 0;
+    }
+    return sum + stepElapsedTime;
+  }, [activeStepIndex, stepElapsedTime, steps]);
 
   useEffect(() => {
     backendAPI.posts.getPost(id).then((data) => {
@@ -66,63 +75,36 @@ export default function CookModeScreen() {
     });
   }, [id]);
 
-  const activeStepIndex = useMemo(() => {
-    if (steps.length === 0) return 0;
-    let foundIndex = 0;
-    for (let i = steps.length - 1; i >= 0; i--) {
-      if ((steps[i].start_time || 0) <= elapsedTime) {
-        foundIndex = i;
-        break;
-      }
-    }
-    return foundIndex;
-  }, [elapsedTime, steps]);
-
   const activeStep = steps[activeStepIndex];
+  const stepDuration = activeStep?.duration || 0;
+  const stepRemaining = Math.max(0, stepDuration - stepElapsedTime);
+  const isWarning = stepDuration > 0 && stepRemaining > 0 && stepRemaining <= WARNING_SECONDS;
 
   useEffect(() => {
     if (phase !== 'cooking' || !isPlaying) return;
 
-    if (totalDuration > 0 && elapsedTime >= totalDuration) {
-      setPhase('finished');
-      return;
-    }
-
-    if (activeStep && activeStep.duration && activeStep.duration > 0) {
-      const stepEndTime = (activeStep.start_time || 0) + activeStep.duration;
-      if (elapsedTime >= stepEndTime) {
-        if (activeStepIndex < steps.length - 1) {
-          setIsPlaying(false);
-          setBufferTargetIndex(activeStepIndex + 1);
-          setPhase('buffer');
-          return;
-        } else {
-          setPhase('finished');
-          return;
-        }
+    if (stepDuration > 0 && stepElapsedTime >= stepDuration) {
+      if (activeStepIndex < steps.length - 1) {
+        setIsPlaying(false);
+        setBufferTargetIndex(activeStepIndex + 1);
+        setPhase('buffer');
+        return;
+      } else {
+        setPhase('finished');
+        return;
       }
     }
 
-    const timer = setInterval(() => setElapsedTime((prev) => prev + 1), 1000);
+    const timer = setInterval(() => setStepElapsedTime((prev) => prev + 1), 1000);
     return () => clearInterval(timer);
-  }, [elapsedTime, isPlaying, phase, totalDuration, activeStep, activeStepIndex, steps.length]);
-
-  const stepElapsed = activeStep
-    ? Math.max(0, elapsedTime - (activeStep.start_time || 0))
-    : 0;
-  const stepDuration = activeStep?.duration || 0;
-  const stepRemaining = Math.max(0, stepDuration - stepElapsed);
-  const isWarning = stepRemaining > 0 && stepRemaining <= WARNING_SECONDS;
+  }, [stepElapsedTime, isPlaying, phase, stepDuration, activeStepIndex, steps.length]);
 
   useEffect(() => {
-    if (activeStepIndex !== lastActiveStepRef.current) {
-      warnedSecondsRef.current = new Set();
-      lastActiveStepRef.current = activeStepIndex;
-    }
+    warnedSecondsRef.current = new Set();
   }, [activeStepIndex]);
 
   useEffect(() => {
-    if (phase !== 'cooking' || !isPlaying || !activeStep?.duration) return;
+    if (phase !== 'cooking' || !isPlaying || !stepDuration) return;
     if (stepRemaining <= 0 || stepRemaining > WARNING_SECONDS) return;
     if (warnedSecondsRef.current.has(stepRemaining)) return;
 
@@ -131,15 +113,16 @@ export default function CookModeScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     }
-  }, [phase, isPlaying, activeStep, stepRemaining]);
+  }, [phase, isPlaying, stepDuration, stepRemaining]);
 
   const startCooking = () => {
     if (steps.length === 0) {
       setPhase('finished');
       return;
     }
+    setActiveStepIndex(0);
+    setStepElapsedTime(0);
     setPhase('cooking');
-    setElapsedTime(0);
     setIsPlaying(true);
     warnedSecondsRef.current = new Set();
   };
@@ -156,22 +139,20 @@ export default function CookModeScreen() {
       setBufferTargetIndex(activeStepIndex + 1);
       setPhase('buffer');
     } else {
-      setElapsedTime(totalDuration);
       setPhase('finished');
     }
   };
 
   const jumpToPrevStep = () => {
     if (activeStepIndex > 0) {
-      setElapsedTime(steps[activeStepIndex - 1].start_time || 0);
-    } else {
-      setElapsedTime(0);
+      setActiveStepIndex((prev) => prev - 1);
+      setStepElapsedTime(0);
     }
   };
 
   const handleAddExtra15s = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setElapsedTime((prev) => Math.max(0, prev - 15));
+    setStepElapsedTime((prev) => Math.max(0, prev - 15));
   };
 
   const togglePlayPause = () => {
@@ -179,12 +160,12 @@ export default function CookModeScreen() {
     setIsPlaying(!isPlaying);
   };
 
-  const dim = 160;
-  const stroke = 10;
+  const dim = 180;
+  const stroke = 8;
   const radius = (dim - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const safeDuration = Math.max(1, stepDuration);
-  const progress = Math.min(1, Math.max(0, stepElapsed / safeDuration));
+  const progress = Math.min(1, Math.max(0, stepElapsedTime / safeDuration));
   const strokeDashoffset = circumference * (1 - progress);
   const isDark = theme === 'dark';
 
@@ -250,16 +231,16 @@ export default function CookModeScreen() {
           theme={theme}
           recipeTitle={post?.recipe_title}
           onProceed={() => {
-            const targetStart = steps[bufferTargetIndex].start_time || 0;
-            setElapsedTime(targetStart);
+            setActiveStepIndex(bufferTargetIndex);
+            setStepElapsedTime(0);
             setBufferTargetIndex(null);
             setPhase('cooking');
             setIsPlaying(true);
           }}
           onPrevStep={() => {
             const prevIndex = Math.max(0, bufferTargetIndex - 1);
-            const targetStart = steps[prevIndex].start_time || 0;
-            setElapsedTime(targetStart);
+            setActiveStepIndex(prevIndex);
+            setStepElapsedTime(0);
             setBufferTargetIndex(null);
             setPhase('cooking');
             setIsPlaying(true);
@@ -289,7 +270,7 @@ export default function CookModeScreen() {
 
           <StepProgressBar
             steps={steps}
-            elapsedTime={elapsedTime}
+            elapsedTime={cumulativeElapsedTime}
             totalDuration={totalDuration}
             activeStepIndex={activeStepIndex}
             warning={isWarning}
@@ -321,11 +302,13 @@ export default function CookModeScreen() {
                 />
               </Svg>
               <View style={styles.timerCenter}>
-                <ThemedText style={[styles.timerSecs, isWarning && styles.lowTimeText]}>
+                <ThemedText
+                  style={[styles.timerSecs, isWarning && styles.lowTimeText]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
                   {formatClock(stepRemaining)}
-                </ThemedText>
-                <ThemedText style={styles.timerLabel}>
-                  {!isPlaying ? 'PAUSED' : 'STEP TIMER'}
                 </ThemedText>
               </View>
             </View>
@@ -479,24 +462,24 @@ const styles = StyleSheet.create({
   },
   timerCenter: {
     position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 16,
   },
   timerSecs: {
-    fontSize: 38,
+    fontSize: 34,
     fontWeight: 'bold',
     color: '#FF8C00',
     fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   lowTimeText: {
     color: '#ff4444',
-  },
-  timerLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#888',
-    letterSpacing: 0.8,
-    marginTop: 2,
   },
   warningBanner: {
     flexDirection: 'row',

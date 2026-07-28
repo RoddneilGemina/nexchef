@@ -84,8 +84,8 @@ export function StepBufferScreen({
     setIsPaused(!isPaused);
   };
 
-  const dim = 160;
-  const stroke = 10;
+  const dim = 180;
+  const stroke = 8;
   const radius = (dim - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const maxSecs = Math.max(1, maxSecondsRef.current);
@@ -150,11 +150,13 @@ export function StepBufferScreen({
               />
             </Svg>
             <View style={styles.timerCenter}>
-              <ThemedText style={[styles.timerSecs, isLowTime && styles.lowTimeText]}>
+              <ThemedText
+                style={[styles.timerSecs, isLowTime && styles.lowTimeText]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
                 {secondsLeft}s
-              </ThemedText>
-              <ThemedText style={styles.timerLabel}>
-                {isPaused ? 'PAUSED' : 'BUFFER TIME'}
               </ThemedText>
             </View>
           </View>
@@ -278,24 +280,24 @@ const styles = StyleSheet.create({
   },
   timerCenter: {
     position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 16,
   },
   timerSecs: {
-    fontSize: 38,
+    fontSize: 34,
     fontWeight: 'bold',
     color: '#FF8C00',
     fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   lowTimeText: {
     color: '#ff4444',
-  },
-  timerLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#888',
-    letterSpacing: 0.8,
-    marginTop: 2,
   },
   bufferToolsRow: {
     flexDirection: 'row',
