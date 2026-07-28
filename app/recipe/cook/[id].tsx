@@ -471,12 +471,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   timerSecs: {
-    fontSize: 34,
+    fontSize: 32,
+    lineHeight: 44,
     fontWeight: 'bold',
     color: '#FF8C00',
     fontVariant: ['tabular-nums'],
     textAlign: 'center',
-    includeFontPadding: false,
   },
   lowTimeText: {
     color: '#ff4444',
