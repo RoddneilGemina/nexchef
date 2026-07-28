@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, StyleSheet, Pressable, TextInput, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, TextInput, ActivityIndicator, Alert, Platform } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Post } from '@/types/post';
@@ -9,14 +9,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import { useAuth } from '@/context/auth';
 import { backendAPI } from '@/services/backend';
+import { UsernameLink } from './username-link';
 
 interface PostCardProps {
   post: Post;
   isDetailView?: boolean;
   onPostUpdated?: () => void;
+  onPostDeleted?: () => void;
 }
 
-export function PostCard({ post, isDetailView = false, onPostUpdated }: PostCardProps) {
+export function PostCard({ post, isDetailView = false, onPostUpdated, onPostDeleted }: PostCardProps) {
   const theme = useColorScheme() ?? 'light';
   const { user } = useAuth();
   const router = useRouter();
@@ -27,6 +29,8 @@ export function PostCard({ post, isDetailView = false, onPostUpdated }: PostCard
   const [isEditing, setIsEditing] = useState(false);
   const [editedCaption, setEditedCaption] = useState(post.caption);
   const [isSaving, setIsSaving] = useState(false);
+  const [showOwnerMenu, setShowOwnerMenu] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Commenting state
   const [isCommenting, setIsCommenting] = useState(false);
@@ -80,6 +84,38 @@ export function PostCard({ post, isDetailView = false, onPostUpdated }: PostCard
     }
   };
 
+  const handleDeletePost = () => {
+    const confirmDelete = () => {
+      setIsDeleting(true);
+      backendAPI.posts.deletePost(post.id)
+        .then(() => {
+          setShowOwnerMenu(false);
+          if (onPostDeleted) onPostDeleted();
+          else if (onPostUpdated) onPostUpdated();
+        })
+        .catch((e) => {
+          const message = e?.message || 'Failed to delete post';
+          if (Platform.OS === 'web') window.alert(message);
+          else Alert.alert('Error', message);
+        })
+        .finally(() => setIsDeleting(false));
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Delete this post? This cannot be undone.')) confirmDelete();
+      return;
+    }
+
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: confirmDelete },
+      ]
+    );
+  };
+
   const handleSubmitComment = async () => {
     if (!commentText.trim()) return;
     setIsSubmittingComment(true);
@@ -103,7 +139,7 @@ export function PostCard({ post, isDetailView = false, onPostUpdated }: PostCard
            <Ionicons name="person" size={20} color={theme === 'dark' ? '#888' : '#aaa'} />
         </View>
         <View style={styles.headerText}>
-          <ThemedText type="defaultSemiBold">{post.username}</ThemedText>
+          <UsernameLink userId={post.user_id} username={post.username} type="defaultSemiBold" />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <ThemedText style={styles.timestamp}>
               {post.updated_at ? `Last updated: ${post.updated_at}` : post.timestamp}
@@ -113,11 +149,36 @@ export function PostCard({ post, isDetailView = false, onPostUpdated }: PostCard
         </View>
         
         {isOwner && !isEditing && (
-          <Pressable style={({pressed}) => [{opacity: pressed ? 0.5 : 1}]} onPress={() => setIsEditing(true)}>
+          <Pressable
+            style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1 }]}
+            onPress={() => setShowOwnerMenu((v) => !v)}
+            disabled={isDeleting}
+          >
             <Ionicons name="ellipsis-horizontal" size={20} color={Colors[theme].icon} />
           </Pressable>
         )}
       </View>
+
+      {isOwner && showOwnerMenu && !isEditing && (
+        <View style={[styles.ownerMenu, { backgroundColor: theme === 'dark' ? '#222' : '#fff', borderColor: theme === 'dark' ? '#333' : '#eee' }]}>
+          <Pressable
+            style={styles.ownerMenuItem}
+            onPress={() => { setShowOwnerMenu(false); setIsEditing(true); }}
+          >
+            <Ionicons name="pencil-outline" size={18} color={Colors[theme].text} />
+            <ThemedText style={styles.ownerMenuText}>Edit caption</ThemedText>
+          </Pressable>
+          <View style={[styles.ownerMenuDivider, { backgroundColor: theme === 'dark' ? '#333' : '#eee' }]} />
+          <Pressable style={styles.ownerMenuItem} onPress={handleDeletePost} disabled={isDeleting}>
+            {isDeleting ? (
+              <ActivityIndicator size="small" color="#ff4444" />
+            ) : (
+              <Ionicons name="trash-outline" size={18} color="#ff4444" />
+            )}
+            <ThemedText style={[styles.ownerMenuText, { color: '#ff4444' }]}>Delete post</ThemedText>
+          </Pressable>
+        </View>
+      )}
 
       {/* Image Placeholder (Only if imageUrl exists) */}
       {post.imageUrl && (
@@ -212,8 +273,8 @@ export function PostCard({ post, isDetailView = false, onPostUpdated }: PostCard
   }
 
   return (
-    <Pressable 
-      disabled={isEditing || isCommenting} 
+    <Pressable
+      disabled={isEditing || isCommenting || showOwnerMenu || isDeleting}
       onPress={() => router.push({ pathname: '/post/[id]', params: { id: post.id } } as any)}
     >
       {content}
@@ -356,5 +417,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 2,
-  }
+  },
+  ownerMenu: {
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
+    borderWidth: 1,
+    borderRadius: Radius.sm,
+    overflow: 'hidden',
+  },
+  ownerMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  ownerMenuText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  ownerMenuDivider: {
+    height: 1,
+    width: '100%',
+  },
 });

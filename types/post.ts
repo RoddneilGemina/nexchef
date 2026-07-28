@@ -10,7 +10,8 @@ export interface RecipeStep {
   step_number?: number;
   title: string;
   description: string;
-  duration: string;
+  start_time?: number | null; // Seconds from the beginning of the recipe
+  duration?: number | null; // Total seconds
 }
 
 export interface Post {
@@ -28,6 +29,7 @@ export interface Post {
   has_cheered?: boolean;
   post_type?: 'text' | 'recipe';
   recipe_title?: string | null;
+  total_duration?: number | null; // Total seconds for the whole recipe
   recipe_ingredients?: RecipeIngredient[];
   recipe_steps?: RecipeStep[];
 }

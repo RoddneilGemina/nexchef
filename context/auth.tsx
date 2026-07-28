@@ -5,6 +5,8 @@ interface AuthContextType {
   user: UserProfile | null;
   isLoading: boolean;
   login: (username: string, pass: string) => Promise<void>;
+  signUp: (username: string, pass: string) => Promise<void>;
+  updatePassword: (newPassword: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -46,6 +48,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const signUp = async (username: string, pass: string) => {
+    setIsLoading(true);
+    try {
+      const profile = await backendAPI.auth.signUp(username, pass);
+      setUser(profile);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    setIsLoading(true);
+    try {
+      await backendAPI.auth.updatePassword(newPassword);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = async () => {
     // If you add backendAPI.auth.logout() later, call it here
     setUser(null);
@@ -56,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signUp, updatePassword, logout }}>
       {children}
     </AuthContext.Provider>
   );
