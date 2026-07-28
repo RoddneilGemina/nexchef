@@ -77,7 +77,7 @@ function DurationInput({
         styles.timeFieldInput,
         {
           color: Colors[theme].text,
-          borderColor: theme === 'dark' ? '#FF8C00' : '#FF8C00',
+          borderColor: '#FF8C00',
           backgroundColor: theme === 'dark' ? '#1a1a1a' : '#FFF8F0',
         },
       ]}
@@ -117,13 +117,12 @@ export default function CreateRecipeScreen() {
   const [caption, setCaption] = useState('');
   const [recipeDuration, setRecipeDuration] = useState({ h: '', m: '10', s: '00' });
   const [ingredients, setIngredients] = useState([{ name: '', quantity: '', unit: '' }]);
-  const [steps, setSteps] = useState([{ title: '', description: '', duration: 60 }]); // duration in seconds
+  const [steps, setSteps] = useState([{ title: '', description: '', duration: 60 }]);
 
   const totalRecipeSeconds = useMemo(() => 
     timeToSeconds(recipeDuration.h, recipeDuration.m, recipeDuration.s),
   [recipeDuration]);
 
-  // Calculate start times dynamically based on sequential order
   const stepsWithTiming = useMemo(() => {
     let currentStart = 0;
     return steps.map((s) => {
@@ -242,40 +241,108 @@ export default function CreateRecipeScreen() {
   };
 
   const borderColor = theme === 'dark' ? '#333' : '#e5e5e5';
-  const inputStyle = { color: Colors[theme].text, borderColor, backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fafafa' };
+  const inputStyle = {
+    color: Colors[theme].text,
+    borderColor,
+    backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fafafa',
+  };
 
-  const renderWizardProgress = () => (
-    <View style={styles.progressRow}>
-      {[0, 1, 2].map((i) => (
-        <View key={i} style={styles.progressSegment}>
-          <View style={[styles.progressDot, i <= step && styles.progressDotActive]} />
-          {i < 2 && <View style={[styles.progressLine, i < step && styles.progressLineActive]} />}
+  const renderWizardProgress = () => {
+    const stepLabels = ['Basic Info', 'Ingredients', 'Recipe Steps'];
+    return (
+      <View style={styles.wizardProgressContainer}>
+        <View style={[styles.wizardProgressTrack, { backgroundColor: theme === 'dark' ? '#333' : '#e0e0e0' }]}>
+          <View
+            style={[
+              styles.wizardProgressFill,
+              { width: `${(step / 2) * 100}%` },
+            ]}
+          />
         </View>
-      ))}
-    </View>
-  );
+
+        <View style={styles.wizardStepsRow}>
+          {stepLabels.map((label, i) => {
+            const isActive = i <= step;
+            const isCurrent = i === step;
+            return (
+              <Pressable
+                key={i}
+                style={styles.wizardStepNode}
+                onPress={() => {
+                  if (i < step) setStep(i);
+                }}
+              >
+                <View
+                  style={[
+                    styles.wizardNodeCircle,
+                    { backgroundColor: theme === 'dark' ? '#333' : '#e0e0e0' },
+                    isActive && styles.wizardNodeCircleActive,
+                    isCurrent && styles.wizardNodeCircleCurrent,
+                  ]}
+                >
+                  {i < step ? (
+                    <Ionicons name="checkmark" size={12} color="#fff" />
+                  ) : (
+                    <ThemedText
+                      style={[
+                        styles.wizardNodeNumber,
+                        isActive && styles.wizardNodeNumberActive,
+                      ]}
+                    >
+                      {i + 1}
+                    </ThemedText>
+                  )}
+                </View>
+                <ThemedText
+                  style={[
+                    styles.wizardNodeLabel,
+                    { color: theme === 'dark' ? '#888' : '#999' },
+                    isActive && styles.wizardNodeLabelActive,
+                    isCurrent && styles.wizardNodeLabelCurrent,
+                  ]}
+                >
+                  {label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
 
   const renderStep0 = () => (
     <View style={styles.wizardSection}>
-      <TextInput
-        style={[styles.input, inputStyle]}
-        placeholder="Recipe title"
-        placeholderTextColor="#888"
-        value={title}
-        onChangeText={setTitle}
-        autoFocus
-      />
-      <TextInput
-        style={[styles.input, styles.inputMultiline, inputStyle]}
-        placeholder="Caption or story..."
-        placeholderTextColor="#888"
-        value={caption}
-        onChangeText={setCaption}
-        multiline
-      />
+      <View style={styles.inputGroup}>
+        <ThemedText style={styles.inputLabel}>Recipe Title</ThemedText>
+        <TextInput
+          style={[styles.input, inputStyle]}
+          placeholder="e.g. Creamy Tuscan Garlic Chicken"
+          placeholderTextColor="#888"
+          value={title}
+          onChangeText={setTitle}
+          autoFocus
+        />
+      </View>
 
-      <View style={[styles.compactCard, { borderColor }]}>
-        <ThemedText style={styles.compactLabel}>Total duration</ThemedText>
+      <View style={styles.inputGroup}>
+        <ThemedText style={styles.inputLabel}>Caption / Recipe Story</ThemedText>
+        <TextInput
+          style={[styles.input, styles.inputMultiline, inputStyle]}
+          placeholder="Tell your followers about this dish, tips, or origin..."
+          placeholderTextColor="#888"
+          value={caption}
+          onChangeText={setCaption}
+          multiline
+        />
+      </View>
+
+      <View style={[styles.compactCard, { borderColor, backgroundColor: theme === 'dark' ? '#1E1E1E' : '#F8F9FA' }]}>
+        <View style={styles.cardHeaderRow}>
+          <Ionicons name="time-outline" size={18} color="#FF8C00" />
+          <ThemedText style={styles.compactLabel}>Total Recipe Duration</ThemedText>
+        </View>
+
         <View style={styles.durationInputs}>
           <View style={styles.durationField}>
             <TextInput
@@ -319,17 +386,20 @@ export default function CreateRecipeScreen() {
 
   const renderStep1 = () => (
     <View style={styles.wizardSection}>
+      <ThemedText style={styles.sectionHeading}>Ingredients List</ThemedText>
+      <ThemedText style={styles.sectionSubtitle}>Add all ingredients required for this recipe.</ThemedText>
+
       {ingredients.map((ing, index) => (
-        <View key={index} style={[styles.compactRow, { borderColor }]}>
+        <View key={index} style={[styles.compactRow, { borderColor, backgroundColor: theme === 'dark' ? '#1E1E1E' : '#F8F9FA' }]}>
           <TextInput
             style={[styles.compactInput, { flex: 2 }, inputStyle]}
-            placeholder="Ingredient"
+            placeholder="Ingredient name"
             placeholderTextColor="#888"
             value={ing.name}
             onChangeText={(val) => handleUpdateIngredient(index, 'name', val)}
           />
           <TextInput
-            style={[styles.compactInput, { flex: 0.7 }, inputStyle]}
+            style={[styles.compactInput, { flex: 0.8 }, inputStyle]}
             placeholder="Qty"
             placeholderTextColor="#888"
             value={ing.quantity}
@@ -337,20 +407,21 @@ export default function CreateRecipeScreen() {
             keyboardType="numeric"
           />
           <TextInput
-            style={[styles.compactInput, { flex: 0.8 }, inputStyle]}
-            placeholder="Unit"
+            style={[styles.compactInput, { flex: 1 }, inputStyle]}
+            placeholder="Unit (g, tbsp, cups)"
             placeholderTextColor="#888"
             value={ing.unit}
             onChangeText={(val) => handleUpdateIngredient(index, 'unit', val)}
           />
-          <Pressable onPress={() => handleRemoveIngredient(index)} hitSlop={8}>
-            <Ionicons name="close-circle" size={20} color={ingredients.length === 1 ? '#ccc' : '#ff4444'} />
+          <Pressable onPress={() => handleRemoveIngredient(index)} hitSlop={8} style={styles.removeBtn}>
+            <Ionicons name="trash-outline" size={20} color={ingredients.length === 1 ? '#ccc' : '#ff4444'} />
           </Pressable>
         </View>
       ))}
+
       <Pressable onPress={handleAddIngredient} style={styles.addButtonCompact}>
-        <Ionicons name="add" size={16} color="#FF8C00" />
-        <ThemedText style={styles.addButtonText}>Add ingredient</ThemedText>
+        <Ionicons name="add" size={18} color="#FF8C00" />
+        <ThemedText style={styles.addButtonText}>Add Ingredient</ThemedText>
       </Pressable>
     </View>
   );
@@ -360,12 +431,15 @@ export default function CreateRecipeScreen() {
 
     return (
       <View style={styles.wizardSection}>
-        <View style={[styles.timelineSummary, { borderColor }]}>
-          <ThemedText style={styles.timelineSummaryText}>
-            {formatSeconds(totalOccupiedTime)} / {formatSeconds(totalRecipeSeconds)}
-          </ThemedText>
-          <ThemedText style={styles.timelineSummaryRemaining}>
-            {formatSeconds(remainingSeconds)} left
+        <View style={[styles.timelineSummary, { borderColor, backgroundColor: theme === 'dark' ? '#1E1E1E' : '#F8F9FA' }]}>
+          <View style={styles.timelineSummaryLeft}>
+            <Ionicons name="speedometer-outline" size={18} color="#FF8C00" />
+            <ThemedText style={styles.timelineSummaryText}>
+              Allocated: {formatSeconds(totalOccupiedTime)} / {formatSeconds(totalRecipeSeconds)}
+            </ThemedText>
+          </View>
+          <ThemedText style={[styles.timelineSummaryRemaining, remainingSeconds <= 0 && { color: '#ff4444' }]}>
+            {formatSeconds(remainingSeconds)} remaining
           </ThemedText>
         </View>
 
@@ -387,33 +461,33 @@ export default function CreateRecipeScreen() {
             </View>
           </View>
         )}
-        
+
         {stepsWithTiming.map((stepItem, index) => {
           const { startTime, maxDuration } = getStepBounds(index);
           const endTime = startTime + stepItem.duration;
           const otherSegments = stepsWithTiming.filter((_, i) => i !== index);
 
           return (
-            <View key={index} style={[styles.stepItem, { borderColor }]}>
+            <View key={index} style={[styles.stepItem, { borderColor, backgroundColor: theme === 'dark' ? '#1E1E1E' : '#F8F9FA' }]}>
               <View style={styles.stepHeader}>
                 <View style={styles.stepNumberPill}>
                   <ThemedText style={styles.stepNumberText}>{index + 1}</ThemedText>
                 </View>
                 <TextInput
                   style={[styles.stepTitleInput, inputStyle]}
-                  placeholder="Step title"
+                  placeholder="Step title (e.g. Sauté onions)"
                   placeholderTextColor="#888"
                   value={stepItem.title}
                   onChangeText={(val) => handleUpdateStep(index, 'title', val)}
                 />
-                <Pressable onPress={() => handleRemoveStep(index)} hitSlop={8} disabled={steps.length === 1}>
+                <Pressable onPress={() => handleRemoveStep(index)} hitSlop={8} disabled={steps.length === 1} style={styles.removeBtn}>
                   <Ionicons name="trash-outline" size={18} color={steps.length === 1 ? '#ccc' : '#ff4444'} />
                 </Pressable>
               </View>
 
               <TextInput
                 style={[styles.stepDescInput, inputStyle]}
-                placeholder="What to do..."
+                placeholder="Detailed instructions for this step..."
                 placeholderTextColor="#888"
                 value={stepItem.description}
                 onChangeText={(val) => handleUpdateStep(index, 'description', val)}
@@ -493,15 +567,15 @@ export default function CreateRecipeScreen() {
             </View>
           );
         })}
-        
+
         <Pressable
           onPress={handleAddStep}
           style={[styles.addButtonCompact, remainingSeconds <= 0 && styles.addButtonDisabled]}
           disabled={remainingSeconds <= 0}
         >
-          <Ionicons name="add" size={16} color={remainingSeconds <= 0 ? '#ccc' : '#FF8C00'} />
+          <Ionicons name="add" size={18} color={remainingSeconds <= 0 ? '#ccc' : '#FF8C00'} />
           <ThemedText style={[styles.addButtonText, remainingSeconds <= 0 && { color: '#ccc' }]}>
-            Add step
+            Add Step
           </ThemedText>
         </Pressable>
       </View>
@@ -533,7 +607,7 @@ export default function CreateRecipeScreen() {
           )
         }} 
       />
-      
+
       {renderWizardProgress()}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {step === 0 && renderStep0()}
@@ -546,103 +620,226 @@ export default function CreateRecipeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl * 2 },
+  scrollContent: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxl * 2, paddingTop: Spacing.sm },
   headerBtn: { paddingHorizontal: Spacing.xs },
   headerBtnText: { color: '#FF8C00', fontWeight: 'bold', fontSize: 16 },
-  progressRow: {
+
+  // Spanning Wizard Progress Tracker
+  wizardProgressContainer: {
+    width: '100%',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    position: 'relative',
+    marginBottom: Spacing.sm,
+  },
+  wizardProgressTrack: {
+    position: 'absolute',
+    top: 28,
+    left: Spacing.lg + 30,
+    right: Spacing.lg + 30,
+    height: 3,
+    borderRadius: 2,
+    zIndex: 1,
+  },
+  wizardProgressFill: {
+    height: '100%',
+    backgroundColor: '#FF8C00',
+    borderRadius: 2,
+  },
+  wizardStepsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  wizardStepNode: {
+    alignItems: 'center',
+    width: 80,
+  },
+  wizardNodeCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+    elevation: 2,
+  },
+  wizardNodeCircleActive: {
+    backgroundColor: '#FF8C00',
+  },
+  wizardNodeCircleCurrent: {
+    backgroundColor: '#FF8C00',
+    shadowColor: '#FF8C00',
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  wizardNodeNumber: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#666',
+  },
+  wizardNodeNumberActive: {
+    color: '#fff',
+  },
+  wizardNodeLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  wizardNodeLabelActive: {
+    color: '#FF8C00',
+  },
+  wizardNodeLabelCurrent: {
+    fontWeight: 'bold',
+    color: '#FF8C00',
+  },
+
+  // Form Section & Inputs
+  wizardSection: { gap: Spacing.md },
+  inputGroup: {
+    gap: Spacing.xs,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FF8C00',
+    letterSpacing: 0.3,
+  },
+  sectionHeading: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    color: '#888',
+    marginBottom: Spacing.xs,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 12,
+    fontSize: 15,
+  },
+  inputMultiline: {
+    minHeight: 110,
+    textAlignVertical: 'top',
+    paddingTop: 14,
+    lineHeight: 22,
+  },
+  compactCard: {
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  compactLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FF8C00',
+    letterSpacing: 0.4,
+  },
+  durationInputs: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.xl,
   },
-  progressSegment: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  progressDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ddd',
+  durationField: {
+    alignItems: 'center',
+    minWidth: 64,
   },
-  progressDotActive: { backgroundColor: '#FF8C00' },
-  progressLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: '#ddd',
-    marginHorizontal: 4,
-  },
-  progressLineActive: { backgroundColor: '#FF8C00' },
-  wizardSection: { gap: Spacing.sm },
-  input: {
-    borderWidth: 1,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  inputMultiline: { minHeight: 72, textAlignVertical: 'top', paddingTop: 10 },
-  compactCard: {
-    borderWidth: 1,
-    borderRadius: Radius.sm,
-    padding: Spacing.sm,
-    gap: Spacing.xs,
-  },
-  compactLabel: { fontSize: 11, fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: 0.4 },
-  durationInputs: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  durationField: { alignItems: 'center', minWidth: 56 },
   durationInput: {
     borderWidth: 1,
-    borderRadius: Radius.sm,
-    width: 52,
-    paddingVertical: 6,
-    fontSize: 16,
-    fontWeight: '600',
+    borderRadius: Radius.md,
+    width: 60,
+    paddingVertical: 10,
+    fontSize: 18,
+    fontWeight: '700',
     textAlign: 'center',
     fontVariant: ['tabular-nums'],
   },
-  durationUnit: { fontSize: 10, color: '#888', marginTop: 2 },
-  durationSep: { fontSize: 18, fontWeight: '600', color: '#ccc', marginHorizontal: 4, marginBottom: 14 },
+  durationUnit: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  durationSep: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#ccc',
+    marginHorizontal: 8,
+    marginBottom: 16,
+  },
   compactRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: Spacing.xs + 2,
     borderWidth: 1,
-    borderRadius: Radius.sm,
-    padding: 6,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
   },
   compactInput: {
     borderWidth: 1,
     borderRadius: Radius.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    fontSize: 13,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 8,
+    fontSize: 14,
+  },
+  removeBtn: {
+    padding: 4,
   },
   addButtonCompact: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingVertical: Spacing.sm,
-    borderWidth: 1,
+    gap: 6,
+    paddingVertical: Spacing.md,
+    borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: '#FF8C00',
-    borderRadius: Radius.sm,
+    borderRadius: Radius.md,
     marginTop: Spacing.xs,
   },
-  addButtonText: { color: '#FF8C00', fontWeight: '600', fontSize: 13 },
+  addButtonText: {
+    color: '#FF8C00',
+    fontWeight: '700',
+    fontSize: 14,
+  },
   timelineSummary: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 8,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
   },
-  timelineSummaryText: { fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  timelineSummaryRemaining: { fontSize: 12, color: '#888' },
+  timelineSummaryLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  timelineSummaryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  timelineSummaryRemaining: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#888',
+  },
   globalTimeline: { marginBottom: Spacing.xs },
   globalTimelineTrack: {
-    height: 5,
+    height: 6,
     borderRadius: 3,
     position: 'relative',
     overflow: 'hidden',
@@ -652,46 +849,50 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     backgroundColor: '#FF8C00',
-    opacity: 0.75,
+    opacity: 0.85,
   },
   stepItem: {
     borderWidth: 1,
-    borderRadius: Radius.sm,
-    padding: Spacing.sm,
-    gap: Spacing.xs,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    gap: Spacing.sm,
   },
-  stepHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  stepHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs + 2,
+  },
   stepNumberPill: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: '#FF8C00',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  stepNumberText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  stepNumberText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
   stepTitleInput: {
     flex: 1,
     borderWidth: 1,
     borderRadius: Radius.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    fontSize: 14,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 8,
+    fontSize: 15,
     fontWeight: '600',
   },
   stepDescInput: {
     borderWidth: 1,
     borderRadius: Radius.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    fontSize: 13,
-    minHeight: 36,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 10,
+    fontSize: 14,
+    minHeight: 64,
     textAlignVertical: 'top',
   },
   timeFieldsRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: Spacing.xs,
+    gap: Spacing.xs + 2,
     marginTop: 4,
   },
   timeFieldBlock: {
@@ -701,21 +902,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   timeFieldLabel: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: '#FF8C00',
-    marginBottom: 3,
+    marginBottom: 4,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
   timeChip: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#666',
     fontVariant: ['tabular-nums'],
     backgroundColor: '#f0f0f0',
     paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: Radius.sm,
     textAlign: 'center',
     overflow: 'hidden',
@@ -729,21 +930,21 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
     paddingHorizontal: 8,
     paddingVertical: 8,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     textAlign: 'center',
     fontVariant: ['tabular-nums'],
     width: '100%',
-    minHeight: 36,
+    minHeight: 38,
   },
-  sliderContainer: { position: 'relative', height: 32, justifyContent: 'center', marginTop: 2 },
+  sliderContainer: { position: 'relative', height: 36, justifyContent: 'center', marginTop: 4 },
   sliderInset: {
     position: 'absolute',
     top: 0,
     bottom: 0,
     justifyContent: 'center',
   },
-  durationSlider: { width: '100%', height: 32 },
+  durationSlider: { width: '100%', height: 36 },
   timelineTrack: {
     position: 'absolute',
     left: 0,

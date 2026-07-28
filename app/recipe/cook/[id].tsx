@@ -336,16 +336,6 @@ export default function CookModeScreen() {
                 {isPlaying ? 'Pause' : 'Resume'}
               </ThemedText>
             </Pressable>
-
-            <Pressable
-              style={[styles.toolBtn, { backgroundColor: isDark ? '#2A2A2A' : '#F0F0F0' }]}
-              onPress={handleAddExtra15s}
-            >
-              <Ionicons name="add-circle-outline" size={18} color="#FF8C00" />
-              <ThemedText style={[styles.toolBtnText, { color: '#FF8C00' }]}>
-                +15s
-              </ThemedText>
-            </Pressable>
           </View>
 
           <View style={[styles.nextCard, { backgroundColor: isDark ? '#1E1E1E' : '#F8F9FA', borderColor: isDark ? '#333' : '#EAEAEA' }]}>
