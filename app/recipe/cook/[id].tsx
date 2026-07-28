@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View, Pressable, ScrollView, ActivityIndicator, SafeAreaView, Platform } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { Colors, Spacing, Radius } from '@/constants/theme';
@@ -8,7 +9,6 @@ import { backendAPI } from '@/services/backend';
 import { Post } from '@/types/post';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { CircularStepTimer } from '@/components/ui/circular-step-timer';
 import { StepProgressBar } from '@/components/ui/step-progress-bar';
 import { StepBufferScreen } from '@/components/ui/step-buffer-screen';
 
@@ -16,16 +16,20 @@ type CookPhase = 'loading' | 'prep' | 'cooking' | 'buffer' | 'finished';
 
 const WARNING_SECONDS = 5;
 
-const formatDuration = (totalSeconds: number) => {
-  if (totalSeconds < 0) totalSeconds = 0;
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  const parts = [];
-  if (h > 0) parts.push(`${h}h`);
-  if (m > 0 || h > 0) parts.push(`${m.toString().padStart(2, '0')}m`);
-  parts.push(`${s.toString().padStart(2, '0')}s`);
-  return parts.join(' : ');
+const formatClock = (totalSeconds: number) => {
+  const safe = Math.max(0, totalSeconds);
+  const m = Math.floor(safe / 60);
+  const s = safe % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
+const formatStepDuration = (durationSecs?: number | null) => {
+  if (!durationSecs || durationSecs <= 0) return null;
+  const m = Math.floor(durationSecs / 60);
+  const s = durationSecs % 60;
+  if (m > 0 && s > 0) return `${m}m ${s}s`;
+  if (m > 0) return `${m} min`;
+  return `${s} sec`;
 };
 
 export default function CookModeScreen() {
@@ -129,7 +133,6 @@ export default function CookModeScreen() {
     }
   }, [phase, isPlaying, activeStep, stepRemaining]);
 
-
   const startCooking = () => {
     if (steps.length === 0) {
       setPhase('finished');
@@ -166,6 +169,25 @@ export default function CookModeScreen() {
     }
   };
 
+  const handleAddExtra15s = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setElapsedTime((prev) => Math.max(0, prev - 15));
+  };
+
+  const togglePlayPause = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsPlaying(!isPlaying);
+  };
+
+  const dim = 160;
+  const stroke = 10;
+  const radius = (dim - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const safeDuration = Math.max(1, stepDuration);
+  const progress = Math.min(1, Math.max(0, stepElapsed / safeDuration));
+  const strokeDashoffset = circumference * (1 - progress);
+  const isDark = theme === 'dark';
+
   if (phase === 'loading') {
     return (
       <SafeAreaView style={[styles.container, styles.center, { backgroundColor: Colors[theme].background }]}>
@@ -190,7 +212,7 @@ export default function CookModeScreen() {
       </View>
 
       {phase === 'prep' && (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
           <ThemedText type="title" style={styles.title}>Preparation</ThemedText>
           <ThemedText style={styles.subtitle}>Check off all ingredients before you start cooking.</ThemedText>
 
@@ -246,13 +268,24 @@ export default function CookModeScreen() {
       )}
 
       {phase === 'cooking' && activeStep && (
-        <View style={styles.cookingLayout}>
-          <View style={styles.timelineHeader}>
-            <ThemedText style={styles.elapsedText}>{formatDuration(elapsedTime)}</ThemedText>
-            {totalDuration > 0 && (
-              <ThemedText style={styles.totalText}> / {formatDuration(totalDuration)}</ThemedText>
-            )}
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.headerBadge}>
+            <Ionicons name="flame-outline" size={16} color="#FF8C00" />
+            <ThemedText style={styles.headerBadgeText}>
+              STEP {activeStepIndex + 1} OF {steps.length}
+            </ThemedText>
           </View>
+
+          <ThemedText type="title" style={styles.screenTitle}>
+            Step {activeStep.step_number || activeStepIndex + 1} Cooking
+          </ThemedText>
+          {post?.recipe_title && (
+            <ThemedText style={styles.recipeSub}>{post.recipe_title}</ThemedText>
+          )}
 
           <StepProgressBar
             steps={steps}
@@ -262,84 +295,116 @@ export default function CookModeScreen() {
             warning={isWarning}
           />
 
-          <ScrollView
-            style={styles.stepScroll}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.stepScrollContent}
-          >
-            <View style={styles.activeTimerWrap}>
-              <CircularStepTimer
-                stepNumber={activeStep.step_number || activeStepIndex + 1}
-                duration={stepDuration}
-                elapsed={stepElapsed}
-                isActive
-                isComplete={false}
-                size="lg"
-                warning={isWarning}
+          <View style={styles.timerContainer}>
+            <View style={[styles.svgWrap, { width: dim, height: dim }]}>
+              <Svg width={dim} height={dim}>
+                <Circle
+                  cx={dim / 2}
+                  cy={dim / 2}
+                  r={radius}
+                  stroke={isDark ? '#333' : '#e0e0e0'}
+                  strokeWidth={stroke}
+                  fill="none"
+                />
+                <Circle
+                  cx={dim / 2}
+                  cy={dim / 2}
+                  r={radius}
+                  stroke={isWarning ? '#ff4444' : '#FF8C00'}
+                  strokeWidth={stroke}
+                  fill="none"
+                  strokeDasharray={`${circumference} ${circumference}`}
+                  strokeDashoffset={strokeDashoffset}
+                  strokeLinecap="round"
+                  rotation={-90}
+                  origin={`${dim / 2}, ${dim / 2}`}
+                />
+              </Svg>
+              <View style={styles.timerCenter}>
+                <ThemedText style={[styles.timerSecs, isWarning && styles.lowTimeText]}>
+                  {formatClock(stepRemaining)}
+                </ThemedText>
+                <ThemedText style={styles.timerLabel}>
+                  {!isPlaying ? 'PAUSED' : 'STEP TIMER'}
+                </ThemedText>
+              </View>
+            </View>
+            {isWarning && (
+              <View style={styles.warningBanner}>
+                <Ionicons name="alarm" size={16} color="#ff4444" />
+                <ThemedText style={styles.warningBannerText}>
+                  {stepRemaining}s left on this step
+                </ThemedText>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.bufferToolsRow}>
+            <Pressable
+              style={[styles.toolBtn, { backgroundColor: isDark ? '#2A2A2A' : '#F0F0F0' }]}
+              onPress={togglePlayPause}
+            >
+              <Ionicons
+                name={isPlaying ? 'pause-outline' : 'play-outline'}
+                size={18}
+                color={Colors[theme].text}
               />
-              {isWarning && (
-                <View style={styles.warningBanner}>
-                  <Ionicons name="alarm" size={16} color="#ff4444" />
-                  <ThemedText style={styles.warningBannerText}>
-                    {stepRemaining}s left on this step
+              <ThemedText style={styles.toolBtnText}>
+                {isPlaying ? 'Pause' : 'Resume'}
+              </ThemedText>
+            </Pressable>
+
+            <Pressable
+              style={[styles.toolBtn, { backgroundColor: isDark ? '#2A2A2A' : '#F0F0F0' }]}
+              onPress={handleAddExtra15s}
+            >
+              <Ionicons name="add-circle-outline" size={18} color="#FF8C00" />
+              <ThemedText style={[styles.toolBtnText, { color: '#FF8C00' }]}>
+                +15s
+              </ThemedText>
+            </Pressable>
+          </View>
+
+          <View style={[styles.nextCard, { backgroundColor: isDark ? '#1E1E1E' : '#F8F9FA', borderColor: isDark ? '#333' : '#EAEAEA' }]}>
+            <View style={styles.nextCardHeader}>
+              <View style={styles.stepBadge}>
+                <ThemedText style={styles.stepBadgeText}>
+                  Step {activeStep.step_number || activeStepIndex + 1} of {steps.length}
+                </ThemedText>
+              </View>
+              {stepDuration ? (
+                <View style={styles.durationBadge}>
+                  <Ionicons name="stopwatch-outline" size={14} color="#888" />
+                  <ThemedText style={styles.durationBadgeText}>
+                    {formatStepDuration(stepDuration)}
                   </ThemedText>
                 </View>
-              )}
+              ) : null}
             </View>
 
-            <View style={styles.activeStepCard}>
-              <ThemedText type="title" style={styles.stepTitle}>{activeStep.title}</ThemedText>
-              <ThemedText style={styles.stepDesc}>{activeStep.description}</ThemedText>
-            </View>
-          </ScrollView>
+            <ThemedText type="subtitle" style={styles.nextTitle}>
+              {activeStep.title}
+            </ThemedText>
 
-          <View style={[styles.bottomDock, { borderTopColor: theme === 'dark' ? '#333' : '#eee', backgroundColor: Colors[theme].background }]}>
-            {activeStepIndex < steps.length - 1 && (
-              <Pressable
-                style={[styles.nextStepPreview, { borderColor: theme === 'dark' ? '#333' : '#eee' }]}
-                onPress={jumpToNextStep}
-              >
-                <ThemedText style={styles.nextStepLabel}>Next</ThemedText>
-                <ThemedText style={styles.nextStepTitle} numberOfLines={1}>
-                  {steps[activeStepIndex + 1].title}
-                </ThemedText>
-                <ThemedText style={styles.nextStepTime}>
-                  {formatDuration(steps[activeStepIndex + 1].start_time || 0)}
-                </ThemedText>
-              </Pressable>
-            )}
-
-            <View style={styles.playerRow}>
-              <Pressable
-                style={[styles.controlIcon, activeStepIndex === 0 && styles.controlIconDisabled]}
-                onPress={jumpToPrevStep}
-                disabled={activeStepIndex === 0}
-              >
-                <Ionicons
-                  name="play-skip-back"
-                  size={32}
-                  color={activeStepIndex === 0 ? '#ccc' : Colors[theme].text}
-                />
-              </Pressable>
-
-              <Pressable style={styles.playButton} onPress={() => setIsPlaying(!isPlaying)}>
-                <Ionicons name={isPlaying ? 'pause' : 'play'} size={36} color="#fff" />
-              </Pressable>
-
-              <Pressable
-                style={[styles.controlIcon, activeStepIndex >= steps.length - 1 && styles.controlIconDisabled]}
-                onPress={jumpToNextStep}
-                disabled={activeStepIndex >= steps.length - 1}
-              >
-                <Ionicons
-                  name="play-skip-forward"
-                  size={32}
-                  color={activeStepIndex >= steps.length - 1 ? '#ccc' : Colors[theme].text}
-                />
-              </Pressable>
-            </View>
+            <ThemedText style={styles.nextDesc}>
+              {activeStep.description}
+            </ThemedText>
           </View>
-        </View>
+
+          <Pressable style={styles.skipButton} onPress={jumpToNextStep}>
+            <ThemedText style={styles.skipButtonText}>
+              Skip Timer
+            </ThemedText>
+            <Ionicons name="arrow-forward" size={20} color="#fff" />
+          </Pressable>
+
+          {activeStepIndex > 0 && (
+            <Pressable style={styles.backButton} onPress={jumpToPrevStep}>
+              <Ionicons name="arrow-back" size={16} color="#888" />
+              <ThemedText style={styles.backButtonText}>Return to Previous Step</ThemedText>
+            </Pressable>
+          )}
+        </ScrollView>
       )}
 
       {phase === 'finished' && (
@@ -365,24 +430,74 @@ const styles = StyleSheet.create({
   navIcon: { width: 40, alignItems: 'flex-start' },
   navTitle: { flex: 1, textAlign: 'center', fontSize: 16 },
   content: { padding: Spacing.lg, flexGrow: 1 },
+  scrollContent: { padding: Spacing.lg, alignItems: 'center', paddingBottom: Spacing.xxl },
   title: { marginBottom: Spacing.xs },
   subtitle: { color: '#888', marginBottom: Spacing.xl },
-  checklist: { gap: Spacing.md, marginBottom: Spacing.xxl },
+  checklist: { gap: Spacing.md, marginBottom: Spacing.xxl, width: '100%' },
   checkItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   checkText: { fontSize: 16, flex: 1 },
   checkedText: { color: '#888', textDecorationLine: 'line-through' },
   primaryButton: { backgroundColor: '#FF8C00', paddingVertical: Spacing.md, paddingHorizontal: Spacing.xxl, borderRadius: Radius.full, alignItems: 'center', alignSelf: 'center' },
   disabledButton: { backgroundColor: '#ccc' },
   primaryButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  cookingLayout: { flex: 1, paddingHorizontal: Spacing.lg },
-  timelineHeader: { flexDirection: 'row', justifyContent: 'center', alignItems: 'baseline', paddingTop: Spacing.sm, paddingBottom: Spacing.sm },
-  elapsedText: { fontSize: 28, fontWeight: 'bold', color: '#FF8C00', fontVariant: ['tabular-nums'] },
-  totalText: { fontSize: 16, fontWeight: '600', color: '#888', fontVariant: ['tabular-nums'] },
-  stepTimersRow: { gap: Spacing.sm, paddingBottom: Spacing.md, paddingHorizontal: 2 },
-  miniTimerWrap: { alignItems: 'center' },
-  stepScroll: { flex: 1 },
-  stepScrollContent: { alignItems: 'center', paddingBottom: Spacing.md },
-  activeTimerWrap: { alignItems: 'center', marginBottom: Spacing.lg, marginTop: Spacing.sm },
+  headerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF4E6',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    marginBottom: Spacing.sm,
+  },
+  headerBadgeText: {
+    color: '#FF8C00',
+    fontWeight: '700',
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  screenTitle: {
+    fontSize: 24,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  recipeSub: {
+    fontSize: 14,
+    color: '#888',
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+  },
+  timerContainer: {
+    marginVertical: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  svgWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  timerCenter: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timerSecs: {
+    fontSize: 38,
+    fontWeight: 'bold',
+    color: '#FF8C00',
+    fontVariant: ['tabular-nums'],
+  },
+  lowTimeText: {
+    color: '#ff4444',
+  },
+  timerLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#888',
+    letterSpacing: 0.8,
+    marginTop: 2,
+  },
   warningBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -394,16 +509,96 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   warningBannerText: { color: '#ff4444', fontWeight: '700', fontSize: 13 },
-  activeStepCard: { width: '100%', alignItems: 'center' },
-  stepTitle: { marginBottom: Spacing.sm, fontSize: 22, lineHeight: 28, textAlign: 'center' },
-  stepDesc: { fontSize: 16, lineHeight: 24, color: '#555', textAlign: 'center' },
-  bottomDock: { borderTopWidth: 1, paddingTop: Spacing.sm, paddingBottom: Platform.OS === 'ios' ? Spacing.xs : Spacing.md },
-  nextStepPreview: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, paddingVertical: 6, paddingHorizontal: Spacing.sm, marginBottom: Spacing.xs, borderWidth: 1, borderRadius: Radius.sm, borderLeftWidth: 3, borderLeftColor: '#FF8C00' },
-  nextStepLabel: { fontSize: 10, fontWeight: '700', color: '#FF8C00', textTransform: 'uppercase', letterSpacing: 0.4 },
-  nextStepTitle: { flex: 1, fontSize: 12, color: '#888' },
-  nextStepTime: { fontSize: 11, color: '#aaa', fontVariant: ['tabular-nums'] },
-  playerRow: { flexDirection: 'row', justifyContent: 'space-evenly', alignItems: 'center' },
-  controlIcon: { padding: Spacing.sm, width: 52, alignItems: 'center' },
-  controlIconDisabled: { opacity: 0.4 },
-  playButton: { backgroundColor: '#FF8C00', width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', shadowColor: '#FF8C00', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6 },
+  bufferToolsRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  toolBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs + 2,
+    borderRadius: Radius.full,
+  },
+  toolBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  nextCard: {
+    width: '100%',
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    marginBottom: Spacing.xl,
+  },
+  nextCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  stepBadge: {
+    backgroundColor: '#FF8C0022',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: Radius.sm,
+  },
+  stepBadgeText: {
+    color: '#FF8C00',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  durationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  durationBadgeText: {
+    fontSize: 12,
+    color: '#888',
+  },
+  nextTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: Spacing.xs,
+  },
+  nextDesc: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#666',
+  },
+  skipButton: {
+    backgroundColor: '#FF8C00',
+    width: '100%',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: Radius.full,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    shadowColor: '#FF8C00',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  skipButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: Spacing.lg,
+    paddingVertical: Spacing.xs,
+  },
+  backButtonText: {
+    color: '#888',
+    fontSize: 14,
+  },
 });

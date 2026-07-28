@@ -214,7 +214,7 @@ export function StepBufferScreen({
 
         <Pressable style={styles.skipButton} onPress={handleSkip}>
           <ThemedText style={styles.skipButtonText}>
-            Skip Buffer & Start Step {nextStep.step_number || nextStepIndex + 1}
+            Skip Timer
           </ThemedText>
           <Ionicons name="arrow-forward" size={20} color="#fff" />
         </Pressable>
