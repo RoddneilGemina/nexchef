@@ -7,6 +7,7 @@ import { Spacing, Radius, Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
 import { backendAPI } from '@/services/backend';
+import { UsernameLink } from './username-link';
 
 interface CommentProps {
   comment: CommentType;
@@ -49,7 +50,7 @@ export function Comment({ comment, onRefresh, isReply = false }: CommentProps) {
       </View>
       <View style={styles.contentContainer}>
         <View style={styles.header}>
-          <ThemedText type="defaultSemiBold" style={styles.username}>{comment.username}</ThemedText>
+          <UsernameLink userId={comment.user_id} username={comment.username} type="defaultSemiBold" style={styles.username} />
           <ThemedText style={styles.timestamp}>{comment.created_at}</ThemedText>
         </View>
         <ThemedText style={styles.content}>{comment.content}</ThemedText>

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useLocalSearchParams, Stack } from 'expo-router';
-import { StyleSheet, View, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { useLocalSearchParams, Stack, Link, useRouter } from 'expo-router';
+import { StyleSheet, View, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -11,9 +11,22 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { backendAPI } from '@/services/backend';
 import { Post, Comment as CommentType } from '@/types/post';
 
+const formatDuration = (totalSeconds?: number | null) => {
+  if (!totalSeconds) return '';
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const parts = [];
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  if (s > 0 || (h === 0 && m === 0)) parts.push(`${s}s`);
+  return parts.join(' ');
+};
+
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useColorScheme() ?? 'light';
+  const router = useRouter();
   
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<CommentType[]>([]);
@@ -79,12 +92,25 @@ export default function PostDetailScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <PostCard post={post} isDetailView={true} onPostUpdated={fetchData} />
+          <PostCard
+            post={post}
+            isDetailView={true}
+            onPostUpdated={fetchData}
+            onPostDeleted={() => router.back()}
+          />
           
           {/* Recipe Content Section */}
           {post.post_type === 'recipe' && (
             <View style={styles.recipeContentSection}>
-              <ThemedText type="subtitle" style={styles.recipeSectionHeader}>Ingredients</ThemedText>
+              <View style={styles.recipeActionRow}>
+                <ThemedText type="subtitle">Ingredients</ThemedText>
+                <Link href={{ pathname: '/recipe/cook/[id]', params: { id: post.id } } as any} asChild>
+                  <Pressable style={({pressed}) => [styles.cookButton, { opacity: pressed ? 0.8 : 1 }]}>
+                    <ThemedText style={styles.cookButtonText}>Cook this</ThemedText>
+                  </Pressable>
+                </Link>
+              </View>
+              
               <View style={[styles.ingredientsBox, { backgroundColor: theme === 'dark' ? '#222' : '#f9f9f9', borderColor: theme === 'dark' ? '#333' : '#eee' }]}>
                 {post.recipe_ingredients?.map((ing, i) => (
                   <View key={i} style={styles.ingredientRow}>
@@ -106,7 +132,7 @@ export default function PostDetailScreen() {
                     <View style={styles.stepContent}>
                       <View style={styles.stepHeaderRow}>
                         <ThemedText type="defaultSemiBold">{step.title}</ThemedText>
-                        {step.duration ? <ThemedText style={styles.stepDuration}>{step.duration} min</ThemedText> : null}
+                        {step.duration ? <ThemedText style={styles.stepDuration}>{formatDuration(step.duration)}</ThemedText> : null}
                       </View>
                       <ThemedText style={styles.stepDescription}>{step.description}</ThemedText>
                     </View>
@@ -156,6 +182,22 @@ const styles = StyleSheet.create({
   recipeContentSection: {
     paddingHorizontal: Spacing.md,
     paddingBottom: Spacing.xl,
+  },
+  recipeActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  cookButton: {
+    backgroundColor: '#FF8C00',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.full,
+  },
+  cookButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
   recipeSectionHeader: {
     marginBottom: Spacing.md,

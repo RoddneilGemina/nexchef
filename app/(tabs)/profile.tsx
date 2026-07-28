@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-import { StyleSheet, View, Pressable, FlatList, TextInput, ActivityIndicator } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { StyleSheet, View, Pressable, FlatList, TextInput, ActivityIndicator, Alert, Platform } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PostCard } from '@/components/ui/post-card';
@@ -14,33 +14,58 @@ import { Post } from '@/types/post';
 export default function ProfileScreen() {
   const theme = useColorScheme() ?? 'light';
   const { user, logout } = useAuth();
+  const router = useRouter();
   
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   
+  // Connection counts
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  
   // Edit state
   const [editUsername, setEditUsername] = useState(user?.username || '');
   const [editBio, setEditBio] = useState(user?.bio || '');
   const [isSaving, setIsSaving] = useState(false);
 
-  const fetchProfileData = async () => {
+  // Password change state
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
+  const fetchProfileData = useCallback(async () => {
     if (!user) return;
     try {
       const userPosts = await backendAPI.posts.getUserPosts(user.id);
       setPosts(userPosts);
+
+      // Fetch follows in a separate try/catch block
+      try {
+        const [followersList, followingList] = await Promise.all([
+          backendAPI.follows.getFollowers(user.id),
+          backendAPI.follows.getFollowing(user.id),
+        ]);
+        setFollowersCount(followersList.length);
+        setFollowingCount(followingList.length);
+      } catch (followError) {
+        console.warn('Follow system fetch failed (table may not exist):', followError);
+        setFollowersCount(0);
+        setFollowingCount(0);
+      }
     } catch (error) {
-      console.error(error);
+      console.error('Core profile posts fetch failed:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   useFocusEffect(
     useCallback(() => {
       fetchProfileData();
-    }, [user])
+    }, [fetchProfileData])
   );
 
   const handleSaveProfile = async () => {
@@ -59,6 +84,52 @@ export default function ProfileScreen() {
     }
   };
 
+  const { updatePassword } = useAuth();
+
+  const handleUpdatePassword = async () => {
+    if (!newPassword.trim()) {
+      const msg = 'Please enter a new password.';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Validation Error', msg);
+      }
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      const msg = 'Passwords do not match.';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Validation Error', msg);
+      }
+      return;
+    }
+    
+    setIsUpdatingPassword(true);
+    try {
+      await updatePassword(newPassword);
+      const successMsg = 'Password updated successfully!';
+      if (Platform.OS === 'web') {
+        window.alert(successMsg);
+      } else {
+        Alert.alert('Success', successMsg);
+      }
+      setIsChangingPassword(false);
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (error: any) {
+      const failMsg = 'Failed to update password: ' + error.message;
+      if (Platform.OS === 'web') {
+        window.alert(failMsg);
+      } else {
+        Alert.alert('Error', failMsg);
+      }
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
+
   const TopBar = () => (
     <View style={styles.topBar}>
       <Pressable onPress={() => setShowMenu(!showMenu)} style={styles.menuIcon}>
@@ -70,6 +141,10 @@ export default function ProfileScreen() {
             <Ionicons name="pencil" size={18} color={Colors[theme].text} />
             <ThemedText>Edit Profile</ThemedText>
           </Pressable>
+          <Pressable style={styles.menuItem} onPress={() => { setIsChangingPassword(true); setShowMenu(false); }}>
+            <Ionicons name="key-outline" size={18} color={Colors[theme].text} />
+            <ThemedText>Change Password</ThemedText>
+          </Pressable>
           <Pressable style={[styles.menuItem, styles.menuItemDestructive]} onPress={logout}>
             <Ionicons name="log-out" size={18} color="#ff4444" />
             <ThemedText style={{ color: '#ff4444' }}>Logout</ThemedText>
@@ -79,13 +154,45 @@ export default function ProfileScreen() {
     </View>
   );
 
+  const handleStatsPress = (type: 'followers' | 'following') => {
+    router.push({
+      pathname: '/profile/connections',
+      params: { userId: user?.id, type }
+    } as any);
+  };
+
   const ProfileHeader = () => (
     <View style={styles.profileHeader}>
       <View style={[styles.avatar, { backgroundColor: theme === 'dark' ? '#333' : '#eee' }]}>
          <Ionicons name="person" size={48} color={theme === 'dark' ? '#666' : '#ccc'} />
       </View>
       
-      {isEditing ? (
+      {isChangingPassword ? (
+        <View style={styles.editForm}>
+          <TextInput
+            style={[styles.editInput, { color: Colors[theme].text, borderColor: theme === 'dark' ? '#444' : '#ccc' }]}
+            value={newPassword}
+            onChangeText={setNewPassword}
+            placeholder="New Password"
+            secureTextEntry
+          />
+          <TextInput
+            style={[styles.editInput, { color: Colors[theme].text, borderColor: theme === 'dark' ? '#444' : '#ccc' }]}
+            value={confirmNewPassword}
+            onChangeText={setConfirmNewPassword}
+            placeholder="Confirm New Password"
+            secureTextEntry
+          />
+          <View style={styles.editActions}>
+            <Pressable onPress={() => { setIsChangingPassword(false); setNewPassword(''); setConfirmNewPassword(''); }} disabled={isUpdatingPassword}>
+              <ThemedText style={styles.cancelText}>Cancel</ThemedText>
+            </Pressable>
+            <Pressable onPress={handleUpdatePassword} disabled={isUpdatingPassword} style={styles.saveButton}>
+              {isUpdatingPassword ? <ActivityIndicator size="small" color="#fff" /> : <ThemedText style={styles.saveText}>Update</ThemedText>}
+            </Pressable>
+          </View>
+        </View>
+      ) : isEditing ? (
         <View style={styles.editForm}>
           <TextInput
             style={[styles.editInput, { color: Colors[theme].text, borderColor: theme === 'dark' ? '#444' : '#ccc' }]}
@@ -125,14 +232,14 @@ export default function ProfileScreen() {
           <ThemedText type="defaultSemiBold">{posts.length}</ThemedText>
           <ThemedText style={styles.statLabel}>Posts</ThemedText>
         </View>
-        <View style={styles.statBox}>
-          <ThemedText type="defaultSemiBold">0</ThemedText>
+        <Pressable style={styles.statBox} onPress={() => handleStatsPress('followers')}>
+          <ThemedText type="defaultSemiBold">{followersCount}</ThemedText>
           <ThemedText style={styles.statLabel}>Followers</ThemedText>
-        </View>
-        <View style={styles.statBox}>
-          <ThemedText type="defaultSemiBold">0</ThemedText>
+        </Pressable>
+        <Pressable style={styles.statBox} onPress={() => handleStatsPress('following')}>
+          <ThemedText type="defaultSemiBold">{followingCount}</ThemedText>
           <ThemedText style={styles.statLabel}>Following</ThemedText>
-        </View>
+        </Pressable>
       </View>
       <View style={[styles.divider, { backgroundColor: theme === 'dark' ? '#333' : '#eee' }]} />
     </View>
@@ -150,7 +257,13 @@ export default function ProfileScreen() {
           data={posts}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={<ProfileHeader />}
-          renderItem={({ item }) => <PostCard post={item} onPostUpdated={fetchProfileData} />}
+          renderItem={({ item }) => (
+            <PostCard
+              post={item}
+              onPostUpdated={fetchProfileData}
+              onPostDeleted={() => setPosts((prev) => prev.filter((p) => p.id !== item.id))}
+            />
+          )}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.contentContainer}
         />

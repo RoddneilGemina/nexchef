@@ -5,26 +5,55 @@ import { ThemedView } from '@/components/themed-view';
 import { useAuth } from '@/context/auth';
 import { Colors, Spacing, Radius, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useRouter } from 'expo-router';
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('roronexchefdev');
   const [password, setPassword] = useState('123');
-  const { login, isLoading } = useAuth();
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const { login, signUp, isLoading } = useAuth();
   const theme = useColorScheme() ?? 'light';
-  const router = useRouter();
 
-  const handleLogin = async () => {
-    try {
-      await login(username, password);
-      // Removed router.replace.
-      // Because app/_layout.tsx dynamically conditionally renders <Stack> only when `user` is set,
-      // React will automatically unmount this screen and mount the Tabs for us!
-    } catch (e: any) {
+  const handleSubmit = async () => {
+    if (!username.trim() || !password.trim()) {
+      const msg = 'Please enter both a username and password.';
       if (Platform.OS === 'web') {
-        window.alert(e.message);
+        window.alert(msg);
       } else {
-        Alert.alert('Login Failed', e.message);
+        Alert.alert('Validation Error', msg);
+      }
+      return;
+    }
+
+    if (isSignUp) {
+      if (password !== confirmPassword) {
+        const msg = 'Passwords do not match.';
+        if (Platform.OS === 'web') {
+          window.alert(msg);
+        } else {
+          Alert.alert('Validation Error', msg);
+        }
+        return;
+      }
+
+      try {
+        await signUp(username.trim(), password);
+      } catch (e: any) {
+        if (Platform.OS === 'web') {
+          window.alert(e.message);
+        } else {
+          Alert.alert('Sign Up Failed', e.message);
+        }
+      }
+    } else {
+      try {
+        await login(username.trim(), password);
+      } catch (e: any) {
+        if (Platform.OS === 'web') {
+          window.alert(e.message);
+        } else {
+          Alert.alert('Login Failed', e.message);
+        }
       }
     }
   };
@@ -36,7 +65,9 @@ export default function LoginScreen() {
           <ThemedText style={styles.logoTextOrange}>Nex</ThemedText>
           <ThemedText style={styles.logoTextChef}>chef</ThemedText>
         </View>
-        <ThemedText style={styles.subtitle}>Welcome to the kitchen.</ThemedText>
+        <ThemedText style={styles.subtitle}>
+          {isSignUp ? 'Create a new kitchen profile.' : 'Welcome to the kitchen.'}
+        </ThemedText>
 
         <View style={styles.form}>
           <TextInput
@@ -56,16 +87,42 @@ export default function LoginScreen() {
             secureTextEntry
           />
 
+          {isSignUp && (
+            <TextInput
+              style={[styles.input, { color: Colors[theme].text, borderColor: theme === 'dark' ? '#333' : '#ddd' }]}
+              placeholder="Confirm Password"
+              placeholderTextColor="#888"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+            />
+          )}
+
           <Pressable 
             style={({ pressed }) => [styles.loginButton, { opacity: pressed ? 0.8 : 1 }]}
-            onPress={handleLogin}
+            onPress={handleSubmit}
             disabled={isLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <ThemedText style={styles.loginButtonText}>Log In</ThemedText>
+              <ThemedText style={styles.loginButtonText}>
+                {isSignUp ? 'Create Account' : 'Log In'}
+              </ThemedText>
             )}
+          </Pressable>
+
+          <Pressable 
+            style={({ pressed }) => [styles.toggleButton, { opacity: pressed ? 0.7 : 1 }]}
+            onPress={() => {
+              setIsSignUp(!isSignUp);
+              setConfirmPassword('');
+            }}
+            disabled={isLoading}
+          >
+            <ThemedText style={styles.toggleButtonText}>
+              {isSignUp ? 'Already have an account? Log In' : "Don't have an account? Create one"}
+            </ThemedText>
           </Pressable>
         </View>
       </View>
@@ -129,5 +186,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  toggleButton: {
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+  },
+  toggleButtonText: {
+    color: '#FF8C00',
+    fontSize: 14,
+    fontWeight: '600',
   }
 });
