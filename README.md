@@ -8,11 +8,11 @@ A modern React Native & Expo cooking application that guides home chefs through 
 - **Preparation Checklist**: Ensure all ingredients are prepped before starting the recipe.
 - **Interactive Step Timers**: Real-time circular timer display with step progress tracking and warning notifications.
 - **Step Buffer Screen**:
-  - Automatically appears between cooking steps to allow users ample time to prepare for the upcoming step.
-  - **30-Second Countdown Buffer**: Visual SVG circular countdown timer with haptic pulses.
+  - Automatically appears before the first step and between cooking steps to allow users ample time to prepare.
+  - **10-Second Countdown Buffer**: Visual SVG circular countdown timer with haptic pulses.
   - **Upcoming Step Preview**: Displays the title, description, step number, and expected duration of the next step.
   - **Skip Buffer Action**: Tapping "Skip Buffer & Start Step" immediately advances to the next step.
-  - **Auto-Proceed**: Automatically advances to the next step once the 30-second buffer finishes.
+  - **Auto-Proceed**: Automatically advances to the next step once the 10-second buffer finishes.
   - **Buffer Controls**: Pause/Resume countdown and +15s extra preparation time buttons.
 
 ## Get Started

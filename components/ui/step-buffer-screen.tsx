@@ -18,7 +18,7 @@ interface StepBufferScreenProps {
   recipeTitle?: string | null;
 }
 
-const DEFAULT_BUFFER_SECONDS = 30;
+const DEFAULT_BUFFER_SECONDS = 10;
 
 export function StepBufferScreen({
   nextStep,
@@ -118,7 +118,7 @@ export function StepBufferScreen({
         </View>
 
         <ThemedText type="title" style={styles.screenTitle}>
-          Get Ready for Next Step
+          {nextStepIndex === 0 ? 'Get Ready for First Step' : 'Get Ready for Next Step'}
         </ThemedText>
         {recipeTitle && (
           <ThemedText style={styles.recipeSub}>{recipeTitle}</ThemedText>

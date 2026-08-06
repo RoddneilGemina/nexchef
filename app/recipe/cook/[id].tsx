@@ -120,11 +120,9 @@ export default function CookModeScreen() {
       setPhase('finished');
       return;
     }
-    setActiveStepIndex(0);
-    setStepElapsedTime(0);
-    setPhase('cooking');
-    setIsPlaying(true);
-    warnedSecondsRef.current = new Set();
+    setBufferTargetIndex(0);
+    setPhase('buffer');
+    setIsPlaying(false);
   };
 
   const toggleCheck = (index: number) => {
@@ -227,7 +225,7 @@ export default function CookModeScreen() {
           nextStep={steps[bufferTargetIndex]}
           nextStepIndex={bufferTargetIndex}
           totalSteps={steps.length}
-          initialBufferSeconds={30}
+          initialBufferSeconds={10}
           theme={theme}
           recipeTitle={post?.recipe_title}
           onProceed={() => {
@@ -236,15 +234,24 @@ export default function CookModeScreen() {
             setBufferTargetIndex(null);
             setPhase('cooking');
             setIsPlaying(true);
+            warnedSecondsRef.current = new Set();
           }}
-          onPrevStep={() => {
-            const prevIndex = Math.max(0, bufferTargetIndex - 1);
-            setActiveStepIndex(prevIndex);
-            setStepElapsedTime(0);
-            setBufferTargetIndex(null);
-            setPhase('cooking');
-            setIsPlaying(true);
-          }}
+          onPrevStep={
+            bufferTargetIndex === 0
+              ? () => {
+                  setPhase('prep');
+                  setBufferTargetIndex(null);
+                }
+              : () => {
+                  const prevIndex = Math.max(0, bufferTargetIndex - 1);
+                  setActiveStepIndex(prevIndex);
+                  setStepElapsedTime(0);
+                  setBufferTargetIndex(null);
+                  setPhase('cooking');
+                  setIsPlaying(true);
+                  warnedSecondsRef.current = new Set();
+                }
+          }
         />
       )}
 
