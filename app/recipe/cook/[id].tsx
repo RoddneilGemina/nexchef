@@ -24,7 +24,7 @@ const formatClock = (totalSeconds: number) => {
 };
 
 const formatStepDuration = (durationSecs?: number | null) => {
-  if (!durationSecs || durationSecs <= 0) return null;
+  if (!durationSecs || durationSecs <= 0) return 'Untimed Prep';
   const m = Math.floor(durationSecs / 60);
   const s = durationSecs % 60;
   if (m > 0 && s > 0) return `${m}m ${s}s`;
@@ -44,7 +44,9 @@ export default function CookModeScreen() {
   const [stepElapsedTime, setStepElapsedTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [bufferTargetIndex, setBufferTargetIndex] = useState<number | null>(null);
+
   const warnedSecondsRef = useRef<Set<number>>(new Set());
+  const firedSubActionsRef = useRef<Set<string>>(new Set());
 
   const steps = useMemo(() => {
     return post?.recipe_steps?.sort((a, b) => (a.step_number || 0) - (b.step_number || 0)) || [];
@@ -76,12 +78,44 @@ export default function CookModeScreen() {
   }, [id]);
 
   const activeStep = steps[activeStepIndex];
+  const isPrepStep = activeStep?.step_type === 'prep' || activeStep?.stepType === 'prep' || (activeStep?.duration || 0) === 0;
   const stepDuration = activeStep?.duration || 0;
   const stepRemaining = Math.max(0, stepDuration - stepElapsedTime);
-  const isWarning = stepDuration > 0 && stepRemaining > 0 && stepRemaining <= WARNING_SECONDS;
+  const isWarning = !isPrepStep && stepDuration > 0 && stepRemaining > 0 && stepRemaining <= WARNING_SECONDS;
+
+  // Extract ingredients needed for the active step
+  const activeStepIngredients = useMemo(() => {
+    if (!activeStep || !post?.recipe_ingredients || post.recipe_ingredients.length === 0) return [];
+
+    const tagged = activeStep.used_ingredients || activeStep.usedIngredients || [];
+    if (tagged.length > 0) {
+      const taggedSet = new Set(tagged.map((t) => t.trim().toLowerCase()));
+      const matched = post.recipe_ingredients.filter((ing) => taggedSet.has(ing.name.trim().toLowerCase()));
+      if (matched.length > 0) return matched;
+    }
+
+    // Fallback: match by title/description text
+    const stepText = `${activeStep.title || ''} ${activeStep.description || ''}`.toLowerCase();
+    return post.recipe_ingredients.filter((ing) => {
+      const name = ing.name.trim().toLowerCase();
+      return name.length > 1 && stepText.includes(name);
+    });
+  }, [activeStep, post?.recipe_ingredients]);
+
+  // Extract active sub-action reminders for current timestamp
+  const activeSubActions = useMemo(() => {
+    if (!activeStep) return [];
+    const list = activeStep.sub_actions || activeStep.subActions || [];
+    return list.filter((sub) => {
+      if (sub.endOffsetSeconds) {
+        return stepElapsedTime >= sub.startOffsetSeconds && stepElapsedTime <= sub.endOffsetSeconds;
+      }
+      return Math.abs(stepElapsedTime - sub.startOffsetSeconds) <= 4;
+    });
+  }, [activeStep, stepElapsedTime]);
 
   useEffect(() => {
-    if (phase !== 'cooking' || !isPlaying) return;
+    if (phase !== 'cooking' || !isPlaying || isPrepStep) return;
 
     if (stepDuration > 0 && stepElapsedTime >= stepDuration) {
       if (activeStepIndex < steps.length - 1) {
@@ -97,14 +131,27 @@ export default function CookModeScreen() {
 
     const timer = setInterval(() => setStepElapsedTime((prev) => prev + 1), 1000);
     return () => clearInterval(timer);
-  }, [stepElapsedTime, isPlaying, phase, stepDuration, activeStepIndex, steps.length]);
+  }, [stepElapsedTime, isPlaying, phase, stepDuration, activeStepIndex, steps.length, isPrepStep]);
 
   useEffect(() => {
     warnedSecondsRef.current = new Set();
+    firedSubActionsRef.current = new Set();
   }, [activeStepIndex]);
 
+  // Sub-action notification trigger
   useEffect(() => {
-    if (phase !== 'cooking' || !isPlaying || !stepDuration) return;
+    if (!isPlaying || activeSubActions.length === 0) return;
+    activeSubActions.forEach((sub) => {
+      const key = `${activeStepIndex}_${sub.id}`;
+      if (!firedSubActionsRef.current.has(key)) {
+        firedSubActionsRef.current.add(key);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
+    });
+  }, [activeSubActions, activeStepIndex, isPlaying]);
+
+  useEffect(() => {
+    if (phase !== 'cooking' || !isPlaying || isPrepStep || !stepDuration) return;
     if (stepRemaining <= 0 || stepRemaining > WARNING_SECONDS) return;
     if (warnedSecondsRef.current.has(stepRemaining)) return;
 
@@ -113,7 +160,7 @@ export default function CookModeScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     }
-  }, [phase, isPlaying, stepDuration, stepRemaining]);
+  }, [phase, isPlaying, isPrepStep, stepDuration, stepRemaining]);
 
   const startCooking = () => {
     if (steps.length === 0) {
@@ -146,11 +193,6 @@ export default function CookModeScreen() {
       setActiveStepIndex((prev) => prev - 1);
       setStepElapsedTime(0);
     }
-  };
-
-  const handleAddExtra15s = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setStepElapsedTime((prev) => Math.max(0, prev - 15));
   };
 
   const togglePlayPause = () => {
@@ -192,8 +234,8 @@ export default function CookModeScreen() {
 
       {phase === 'prep' && (
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <ThemedText type="title" style={styles.title}>Preparation</ThemedText>
-          <ThemedText style={styles.subtitle}>Check off all ingredients before you start cooking.</ThemedText>
+          <ThemedText type="title" style={styles.title}>Preparation Checklist</ThemedText>
+          <ThemedText style={styles.subtitle}>Check off all ingredients before starting cooking steps.</ThemedText>
 
           <View style={styles.checklist}>
             {post?.recipe_ingredients?.map((ing, i) => (
@@ -215,7 +257,7 @@ export default function CookModeScreen() {
             disabled={!prepChecklist.every((v) => v)}
             onPress={startCooking}
           >
-            <ThemedText style={styles.primaryButtonText}>Start Cooking</ThemedText>
+            <ThemedText style={styles.primaryButtonText}>Start Recipe Steps</ThemedText>
           </Pressable>
         </ScrollView>
       )}
@@ -228,6 +270,7 @@ export default function CookModeScreen() {
           initialBufferSeconds={10}
           theme={theme}
           recipeTitle={post?.recipe_title}
+          allIngredients={post?.recipe_ingredients}
           onProceed={() => {
             setActiveStepIndex(bufferTargetIndex);
             setStepElapsedTime(0);
@@ -261,15 +304,19 @@ export default function CookModeScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.headerBadge}>
-            <Ionicons name="flame-outline" size={16} color="#FF8C00" />
-            <ThemedText style={styles.headerBadgeText}>
-              STEP {activeStepIndex + 1} OF {steps.length}
+          <View style={[styles.headerBadge, isPrepStep && { backgroundColor: '#E6F4EA' }]}>
+            <Ionicons
+              name={isPrepStep ? 'cut-outline' : 'flame-outline'}
+              size={16}
+              color={isPrepStep ? '#10B981' : '#FF8C00'}
+            />
+            <ThemedText style={[styles.headerBadgeText, isPrepStep && { color: '#10B981' }]}>
+              STEP {activeStepIndex + 1} OF {steps.length} — {isPrepStep ? 'UNTIMED PREP' : 'ACTIVE HEAT'}
             </ThemedText>
           </View>
 
           <ThemedText type="title" style={styles.screenTitle}>
-            Step {activeStep.step_number || activeStepIndex + 1} Cooking
+            Step {activeStep.step_number || activeStepIndex + 1}: {activeStep.title}
           </ThemedText>
           {post?.recipe_title && (
             <ThemedText style={styles.recipeSub}>{post.recipe_title}</ThemedText>
@@ -283,83 +330,128 @@ export default function CookModeScreen() {
             warning={isWarning}
           />
 
-          <View style={styles.timerContainer}>
-            <View style={[styles.svgWrap, { width: dim, height: dim }]}>
-              <Svg width={dim} height={dim}>
-                <Circle
-                  cx={dim / 2}
-                  cy={dim / 2}
-                  r={radius}
-                  stroke={isDark ? '#333' : '#e0e0e0'}
-                  strokeWidth={stroke}
-                  fill="none"
-                />
-                <Circle
-                  cx={dim / 2}
-                  cy={dim / 2}
-                  r={radius}
-                  stroke={isWarning ? '#ff4444' : '#FF8C00'}
-                  strokeWidth={stroke}
-                  fill="none"
-                  strokeDasharray={`${circumference} ${circumference}`}
-                  strokeDashoffset={strokeDashoffset}
-                  strokeLinecap="round"
-                  rotation={-90}
-                  origin={`${dim / 2}, ${dim / 2}`}
-                />
-              </Svg>
-              <View style={styles.timerCenter}>
-                <ThemedText
-                  style={[styles.timerSecs, isWarning && styles.lowTimeText]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.7}
-                >
-                  {formatClock(stepRemaining)}
-                </ThemedText>
-              </View>
-            </View>
-            {isWarning && (
-              <View style={styles.warningBanner}>
-                <Ionicons name="alarm" size={16} color="#ff4444" />
-                <ThemedText style={styles.warningBannerText}>
-                  {stepRemaining}s left on this step
-                </ThemedText>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.bufferToolsRow}>
-            <Pressable
-              style={[styles.toolBtn, { backgroundColor: isDark ? '#2A2A2A' : '#F0F0F0' }]}
-              onPress={togglePlayPause}
-            >
-              <Ionicons
-                name={isPlaying ? 'pause-outline' : 'play-outline'}
-                size={18}
-                color={Colors[theme].text}
-              />
-              <ThemedText style={styles.toolBtnText}>
-                {isPlaying ? 'Pause' : 'Resume'}
+          {/* UNTIMED PREP STEP VIEW vs ACTIVE HEAT PRECISION TIMER VIEW */}
+          {isPrepStep ? (
+            <View style={[styles.untimedPrepCard, { backgroundColor: isDark ? '#1E293B' : '#F0FDF4', borderColor: '#10B981' }]}>
+              <Ionicons name="cut" size={40} color="#10B981" />
+              <ThemedText style={styles.untimedPrepCardTitle}>Untimed Prep Step</ThemedText>
+              <ThemedText style={styles.untimedPrepCardDesc}>
+                Take your time to chop, peel, and measure. Knife skills vary by chef — no ticking timer pressures you!
               </ThemedText>
-            </Pressable>
-          </View>
+
+              <Pressable style={styles.untimedDoneBtn} onPress={jumpToNextStep}>
+                <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+                <ThemedText style={styles.untimedDoneBtnText}>Done Prepping (Tap to Continue) →</ThemedText>
+              </Pressable>
+            </View>
+          ) : (
+            <>
+              {/* Active Sub-Actions Pop-up Reminder Banner */}
+              {activeSubActions.length > 0 && (
+                <View style={styles.subActionNoticeBox}>
+                  {activeSubActions.map((sub) => (
+                    <View key={sub.id} style={styles.subActionNoticeBanner}>
+                      <Ionicons
+                        name={
+                          sub.type === 'stir'
+                            ? 'sync'
+                            : sub.type === 'flip'
+                            ? 'restaurant'
+                            : sub.type === 'baste'
+                            ? 'color-palette'
+                            : 'notifications'
+                        }
+                        size={20}
+                        color="#fff"
+                      />
+                      <View style={{ flex: 1 }}>
+                        <ThemedText style={styles.subActionNoticeTitle}>
+                          {sub.type.toUpperCase()} REMINDER
+                        </ThemedText>
+                        <ThemedText style={styles.subActionNoticeText}>{sub.label}</ThemedText>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <View style={styles.timerContainer}>
+                <View style={[styles.svgWrap, { width: dim, height: dim }]}>
+                  <Svg width={dim} height={dim}>
+                    <Circle
+                      cx={dim / 2}
+                      cy={dim / 2}
+                      r={radius}
+                      stroke={isDark ? '#333' : '#e0e0e0'}
+                      strokeWidth={stroke}
+                      fill="none"
+                    />
+                    <Circle
+                      cx={dim / 2}
+                      cy={dim / 2}
+                      r={radius}
+                      stroke={isWarning ? '#ff4444' : '#FF8C00'}
+                      strokeWidth={stroke}
+                      fill="none"
+                      strokeDasharray={`${circumference} ${circumference}`}
+                      strokeDashoffset={strokeDashoffset}
+                      strokeLinecap="round"
+                      rotation={-90}
+                      origin={`${dim / 2}, ${dim / 2}`}
+                    />
+                  </Svg>
+                  <View style={styles.timerCenter}>
+                    <ThemedText
+                      style={[styles.timerSecs, isWarning && styles.lowTimeText]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.7}
+                    >
+                      {formatClock(stepRemaining)}
+                    </ThemedText>
+                  </View>
+                </View>
+                {isWarning && (
+                  <View style={styles.warningBanner}>
+                    <Ionicons name="alarm" size={16} color="#ff4444" />
+                    <ThemedText style={styles.warningBannerText}>
+                      {stepRemaining}s left on this step
+                    </ThemedText>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.bufferToolsRow}>
+                <Pressable
+                  style={[styles.toolBtn, { backgroundColor: isDark ? '#2A2A2A' : '#F0F0F0' }]}
+                  onPress={togglePlayPause}
+                >
+                  <Ionicons
+                    name={isPlaying ? 'pause-outline' : 'play-outline'}
+                    size={18}
+                    color={Colors[theme].text}
+                  />
+                  <ThemedText style={styles.toolBtnText}>
+                    {isPlaying ? 'Pause' : 'Resume'}
+                  </ThemedText>
+                </Pressable>
+              </View>
+            </>
+          )}
 
           <View style={[styles.nextCard, { backgroundColor: isDark ? '#1E1E1E' : '#F8F9FA', borderColor: isDark ? '#333' : '#EAEAEA' }]}>
             <View style={styles.nextCardHeader}>
-              <View style={styles.stepBadge}>
-                <ThemedText style={styles.stepBadgeText}>
+              <View style={[styles.stepBadge, isPrepStep && { backgroundColor: '#10B98122' }]}>
+                <ThemedText style={[styles.stepBadgeText, isPrepStep && { color: '#10B981' }]}>
                   Step {activeStep.step_number || activeStepIndex + 1} of {steps.length}
                 </ThemedText>
               </View>
-              {stepDuration ? (
-                <View style={styles.durationBadge}>
-                  <Ionicons name="stopwatch-outline" size={14} color="#888" />
-                  <ThemedText style={styles.durationBadgeText}>
-                    {formatStepDuration(stepDuration)}
-                  </ThemedText>
-                </View>
-              ) : null}
+              <View style={styles.durationBadge}>
+                <Ionicons name={isPrepStep ? 'cut-outline' : 'stopwatch-outline'} size={14} color="#888" />
+                <ThemedText style={styles.durationBadgeText}>
+                  {formatStepDuration(stepDuration)}
+                </ThemedText>
+              </View>
             </View>
 
             <ThemedText type="subtitle" style={styles.nextTitle}>
@@ -369,14 +461,44 @@ export default function CookModeScreen() {
             <ThemedText style={styles.nextDesc}>
               {activeStep.description}
             </ThemedText>
+
+            {/* Needed Ingredients Display for the active step */}
+            {activeStepIngredients.length > 0 && (
+              <View style={styles.ingredientsSection}>
+                <View style={styles.ingredientsHeader}>
+                  <Ionicons name="restaurant-outline" size={14} color="#FF8C00" />
+                  <ThemedText style={styles.ingredientsHeaderTitle}>
+                    Needed Ingredients for this Step:
+                  </ThemedText>
+                </View>
+                <View style={styles.ingredientsList}>
+                  {activeStepIngredients.map((ing, idx) => (
+                    <View
+                      key={idx}
+                      style={[
+                        styles.ingredientChip,
+                        { backgroundColor: isDark ? '#2A2A2A' : '#FFF3E0', borderColor: '#FF8C0055' },
+                      ]}
+                    >
+                      <ThemedText style={styles.ingredientQty}>
+                        {ing.quantity} {ing.unit}
+                      </ThemedText>
+                      <ThemedText style={styles.ingredientName}>{ing.name}</ThemedText>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
           </View>
 
-          <Pressable style={styles.skipButton} onPress={jumpToNextStep}>
-            <ThemedText style={styles.skipButtonText}>
-              Skip Timer
-            </ThemedText>
-            <Ionicons name="arrow-forward" size={20} color="#fff" />
-          </Pressable>
+          {!isPrepStep && (
+            <Pressable style={styles.skipButton} onPress={jumpToNextStep}>
+              <ThemedText style={styles.skipButtonText}>
+                Next Step →
+              </ThemedText>
+              <Ionicons name="arrow-forward" size={20} color="#fff" />
+            </Pressable>
+          )}
 
           {activeStepIndex > 0 && (
             <Pressable style={styles.backButton} onPress={jumpToPrevStep}>
@@ -506,18 +628,89 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+
+  // Sub-action Notice Overlay Box
+  subActionNoticeBox: {
+    width: '100%',
+    marginVertical: Spacing.xs,
+    gap: 6,
+  },
+  subActionNoticeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FF8C00',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: Radius.md,
+    shadowColor: '#FF8C00',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  subActionNoticeTitle: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  subActionNoticeText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  // Untimed Prep Step Card View
+  untimedPrepCard: {
+    width: '100%',
+    alignItems: 'center',
+    borderRadius: Radius.lg,
+    borderWidth: 1.5,
+    padding: Spacing.xl,
+    marginVertical: Spacing.md,
+    gap: 10,
+  },
+  untimedPrepCardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  untimedPrepCardDesc: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  untimedDoneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#10B981',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: Radius.full,
+    marginTop: 6,
+  },
+  untimedDoneBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+
   nextCard: {
     width: '100%',
     borderRadius: Radius.lg,
     padding: Spacing.lg,
     borderWidth: 1,
     marginBottom: Spacing.xl,
+    gap: Spacing.sm,
   },
   nextCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
+    marginBottom: 2,
   },
   stepBadge: {
     backgroundColor: '#FF8C0022',
@@ -542,13 +735,56 @@ const styles = StyleSheet.create({
   nextTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: Spacing.xs,
   },
   nextDesc: {
     fontSize: 14,
     lineHeight: 20,
     color: '#666',
   },
+
+  // Ingredients display section
+  ingredientsSection: {
+    marginTop: Spacing.xs,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#EAEAEA33',
+    gap: 8,
+  },
+  ingredientsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ingredientsHeaderTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FF8C00',
+    letterSpacing: 0.3,
+  },
+  ingredientsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  ingredientChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+  },
+  ingredientQty: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FF8C00',
+  },
+  ingredientName: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
   skipButton: {
     backgroundColor: '#FF8C00',
     width: '100%',
