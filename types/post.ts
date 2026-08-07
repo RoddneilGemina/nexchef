@@ -5,6 +5,14 @@ export interface RecipeIngredient {
   unit: string;
 }
 
+export interface SubActionReminder {
+  id: string;
+  type: 'stir' | 'flip' | 'baste' | 'check' | 'add_ingredient' | 'custom';
+  label: string;
+  startOffsetSeconds: number; // Seconds relative to step start
+  endOffsetSeconds?: number;   // Optional end offset for range actions like stirring
+}
+
 export interface RecipeStep {
   id?: string;
   step_number?: number;
@@ -12,6 +20,12 @@ export interface RecipeStep {
   description: string;
   start_time?: number | null; // Seconds from the beginning of the recipe
   duration?: number | null; // Total seconds
+  step_type?: 'prep' | 'heat';
+  stepType?: 'prep' | 'heat';
+  used_ingredients?: string[];
+  usedIngredients?: string[];
+  sub_actions?: SubActionReminder[];
+  subActions?: SubActionReminder[];
 }
 
 export interface Post {
