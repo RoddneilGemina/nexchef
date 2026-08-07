@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, Pressable, ScrollView } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/themed-text';
 import { Colors, Spacing, Radius } from '@/constants/theme';
-import { RecipeStep } from '@/types/post';
+import { RecipeStep, RecipeIngredient } from '@/types/post';
 
 interface StepBufferScreenProps {
   nextStep: RecipeStep;
@@ -16,6 +16,7 @@ interface StepBufferScreenProps {
   onProceed: () => void;
   onPrevStep?: () => void;
   recipeTitle?: string | null;
+  allIngredients?: RecipeIngredient[];
 }
 
 const DEFAULT_BUFFER_SECONDS = 10;
@@ -29,6 +30,7 @@ export function StepBufferScreen({
   onProceed,
   onPrevStep,
   recipeTitle,
+  allIngredients = [],
 }: StepBufferScreenProps) {
   const [secondsLeft, setSecondsLeft] = useState(initialBufferSeconds);
   const [isPaused, setIsPaused] = useState(false);
@@ -84,6 +86,25 @@ export function StepBufferScreen({
     setIsPaused(!isPaused);
   };
 
+  // Helper to extract ingredients for the current step
+  const neededIngredients = useMemo(() => {
+    if (!nextStep || !allIngredients || allIngredients.length === 0) return [];
+
+    const tagged = nextStep.used_ingredients || nextStep.usedIngredients || [];
+    if (tagged.length > 0) {
+      const taggedSet = new Set(tagged.map((t) => t.trim().toLowerCase()));
+      const matched = allIngredients.filter((ing) => taggedSet.has(ing.name.trim().toLowerCase()));
+      if (matched.length > 0) return matched;
+    }
+
+    // Fallback: match by title/description keywords
+    const stepText = `${nextStep.title || ''} ${nextStep.description || ''}`.toLowerCase();
+    return allIngredients.filter((ing) => {
+      const name = ing.name.trim().toLowerCase();
+      return name.length > 1 && stepText.includes(name);
+    });
+  }, [nextStep, allIngredients]);
+
   const dim = 180;
   const stroke = 8;
   const radius = (dim - stroke) / 2;
@@ -106,10 +127,7 @@ export function StepBufferScreen({
 
   return (
     <View style={[styles.container, { backgroundColor: Colors[theme].background }]}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.headerBadge}>
           <Ionicons name="time-outline" size={16} color="#FF8C00" />
           <ThemedText style={styles.headerBadgeText}>
@@ -120,9 +138,7 @@ export function StepBufferScreen({
         <ThemedText type="title" style={styles.screenTitle}>
           {nextStepIndex === 0 ? 'Get Ready for First Step' : 'Get Ready for Next Step'}
         </ThemedText>
-        {recipeTitle && (
-          <ThemedText style={styles.recipeSub}>{recipeTitle}</ThemedText>
-        )}
+        {recipeTitle && <ThemedText style={styles.recipeSub}>{recipeTitle}</ThemedText>}
 
         <View style={styles.timerContainer}>
           <View style={[styles.svgWrap, { width: dim, height: dim }]}>
@@ -172,9 +188,7 @@ export function StepBufferScreen({
               size={18}
               color={Colors[theme].text}
             />
-            <ThemedText style={styles.toolBtnText}>
-              {isPaused ? 'Resume' : 'Pause'}
-            </ThemedText>
+            <ThemedText style={styles.toolBtnText}>{isPaused ? 'Resume' : 'Pause'}</ThemedText>
           </Pressable>
 
           <Pressable
@@ -182,13 +196,16 @@ export function StepBufferScreen({
             onPress={() => handleAddExtraTime(15)}
           >
             <Ionicons name="add-circle-outline" size={18} color="#FF8C00" />
-            <ThemedText style={[styles.toolBtnText, { color: '#FF8C00' }]}>
-              +15s
-            </ThemedText>
+            <ThemedText style={[styles.toolBtnText, { color: '#FF8C00' }]}>+15s</ThemedText>
           </Pressable>
         </View>
 
-        <View style={[styles.nextCard, { backgroundColor: isDark ? '#1E1E1E' : '#F8F9FA', borderColor: isDark ? '#333' : '#EAEAEA' }]}>
+        <View
+          style={[
+            styles.nextCard,
+            { backgroundColor: isDark ? '#1E1E1E' : '#F8F9FA', borderColor: isDark ? '#333' : '#EAEAEA' },
+          ]}
+        >
           <View style={styles.nextCardHeader}>
             <View style={styles.stepBadge}>
               <ThemedText style={styles.stepBadgeText}>
@@ -209,15 +226,39 @@ export function StepBufferScreen({
             {nextStep.title}
           </ThemedText>
 
-          <ThemedText style={styles.nextDesc}>
-            {nextStep.description}
-          </ThemedText>
+          <ThemedText style={styles.nextDesc}>{nextStep.description}</ThemedText>
+
+          {/* Needed Ingredients Display for this step */}
+          {neededIngredients.length > 0 && (
+            <View style={styles.ingredientsSection}>
+              <View style={styles.ingredientsHeader}>
+                <Ionicons name="restaurant-outline" size={14} color="#FF8C00" />
+                <ThemedText style={styles.ingredientsHeaderTitle}>
+                  Needed Ingredients for this Step:
+                </ThemedText>
+              </View>
+              <View style={styles.ingredientsList}>
+                {neededIngredients.map((ing, idx) => (
+                  <View
+                    key={idx}
+                    style={[
+                      styles.ingredientChip,
+                      { backgroundColor: isDark ? '#2A2A2A' : '#FFF3E0', borderColor: '#FF8C0055' },
+                    ]}
+                  >
+                    <ThemedText style={styles.ingredientQty}>
+                      {ing.quantity} {ing.unit}
+                    </ThemedText>
+                    <ThemedText style={styles.ingredientName}>{ing.name}</ThemedText>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
         </View>
 
         <Pressable style={styles.skipButton} onPress={handleSkip}>
-          <ThemedText style={styles.skipButtonText}>
-            Skip Timer
-          </ThemedText>
+          <ThemedText style={styles.skipButtonText}>Start Cooking Now</ThemedText>
           <Ionicons name="arrow-forward" size={20} color="#fff" />
         </Pressable>
 
@@ -322,12 +363,13 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     borderWidth: 1,
     marginBottom: Spacing.xl,
+    gap: Spacing.sm,
   },
   nextCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
+    marginBottom: 2,
   },
   stepBadge: {
     backgroundColor: '#FF8C0022',
@@ -352,13 +394,56 @@ const styles = StyleSheet.create({
   nextTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: Spacing.xs,
   },
   nextDesc: {
     fontSize: 14,
     lineHeight: 20,
     color: '#666',
   },
+
+  // Needed Ingredients Section
+  ingredientsSection: {
+    marginTop: Spacing.xs,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#EAEAEA33',
+    gap: 8,
+  },
+  ingredientsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ingredientsHeaderTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FF8C00',
+    letterSpacing: 0.3,
+  },
+  ingredientsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  ingredientChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+  },
+  ingredientQty: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FF8C00',
+  },
+  ingredientName: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
   skipButton: {
     backgroundColor: '#FF8C00',
     width: '100%',
