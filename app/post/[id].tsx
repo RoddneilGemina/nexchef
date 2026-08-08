@@ -5,6 +5,7 @@ import { useFocusEffect } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PostCard } from '@/components/ui/post-card';
+import { RecipeTechniqueTags } from '@/components/ui/recipe-technique-tags';
 import { Comment } from '@/components/ui/comment';
 import { Spacing, Radius } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';

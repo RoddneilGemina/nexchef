@@ -10,6 +10,7 @@ import { Link, useRouter } from 'expo-router';
 import { useAuth } from '@/context/auth';
 import { backendAPI } from '@/services/backend';
 import { UsernameLink } from './username-link';
+import { RecipeTechniqueTags } from './recipe-technique-tags';
 
 interface PostCardProps {
   post: Post;
@@ -219,6 +220,9 @@ export function PostCard({ post, isDetailView = false, onPostUpdated, onPostDele
             )}
           </>
         )}
+
+        {/* COOKING METHOD & TECHNIQUE TAGS */}
+        <RecipeTechniqueTags post={post} />
       </View>
 
       {/* Action Bar */}
