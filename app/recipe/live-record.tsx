@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,11 +7,9 @@ import {
   TextInput,
   Alert,
   SafeAreaView,
-  Platform,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
@@ -44,22 +42,23 @@ export default function LiveRecordScreen() {
   const [recipeTitle, setRecipeTitle] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isReviewPhase, setIsReviewPhase] = useState(false);
 
   // Timers
   const [totalElapsedTime, setTotalElapsedTime] = useState(0);
   const [currentStepElapsedTime, setCurrentStepElapsedTime] = useState(0);
+  const [currentStepNumber, setCurrentStepNumber] = useState(1);
 
   // Checkpoints Recorded
   const [checkpoints, setCheckpoints] = useState<LiveCheckpoint[]>([]);
-  const [activeStepTitle, setActiveStepTitle] = useState('');
 
-  // Active Stirring Sub-action Tracking
+  // Sub-action Tracking
   const [activeStirringStart, setActiveStirringStart] = useState<number | null>(null);
   const [currentStepSubActions, setCurrentStepSubActions] = useState<SubActionReminder[]>([]);
 
   // Main Recording Interval
   useEffect(() => {
-    if (!isRecording || isPaused) return;
+    if (!isRecording || isPaused || isReviewPhase) return;
 
     const interval = setInterval(() => {
       setTotalElapsedTime((prev) => prev + 1);
@@ -67,7 +66,7 @@ export default function LiveRecordScreen() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isRecording, isPaused]);
+  }, [isRecording, isPaused, isReviewPhase]);
 
   const startRecordingSession = () => {
     if (!recipeTitle.trim()) {
@@ -77,11 +76,13 @@ export default function LiveRecordScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setIsRecording(true);
     setIsPaused(false);
+    setIsReviewPhase(false);
     setTotalElapsedTime(0);
     setCurrentStepElapsedTime(0);
+    setCurrentStepNumber(1);
     setCheckpoints([]);
     setCurrentStepSubActions([]);
-    setActiveStepTitle('Step 1: Prep & Sauté');
+    setActiveStirringStart(null);
   };
 
   const togglePauseSession = () => {
@@ -89,14 +90,14 @@ export default function LiveRecordScreen() {
     setIsPaused(!isPaused);
   };
 
-  // --- SUB-ACTION REMINDERS ---
-  const handleToggleStirringReminder = () => {
+  // --- SUB-ACTION HANDLERS ---
+  const handleToggleStirring = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (activeStirringStart === null) {
       // Start Stirring
       setActiveStirringStart(currentStepElapsedTime);
     } else {
-      // End Stirring -> Add Stir SubAction
+      // End Stirring
       const newSubAction: SubActionReminder = {
         id: `sub_${Date.now()}`,
         type: 'stir',
@@ -109,25 +110,24 @@ export default function LiveRecordScreen() {
     }
   };
 
-  const handleAddPointSubAction = (
-    type: 'flip' | 'baste' | 'check' | 'add_ingredient',
-    label: string
-  ) => {
+  const handleAddFlipAction = () => {
+    if (activeStirringStart !== null) return; // Disabled while stirring is active!
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const newSubAction: SubActionReminder = {
       id: `sub_${Date.now()}`,
-      type,
-      label,
+      type: 'flip',
+      label: 'Flip food to the other side',
       startOffsetSeconds: currentStepElapsedTime,
     };
     setCurrentStepSubActions((prev) => [...prev, newSubAction]);
   };
 
-  // --- MARK CHECKPOINT ---
-  const handleMarkCheckpoint = (defaultType: 'heat' | 'prep' = 'heat') => {
+  // --- ADVANCE TO NEXT STEP ---
+  const handleNextStep = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    // If stirring was active, close it out
+    // Close active stirring if running
     let finalSubActions = [...currentStepSubActions];
     if (activeStirringStart !== null) {
       finalSubActions.push({
@@ -140,61 +140,86 @@ export default function LiveRecordScreen() {
       setActiveStirringStart(null);
     }
 
-    const stepNum = checkpoints.length + 1;
-    const newCheckpoint: LiveCheckpoint = {
+    const recordedStep: LiveCheckpoint = {
       id: `cp_${Date.now()}`,
-      stepNumber: stepNum,
-      title: activeStepTitle.trim() || `Step ${stepNum}`,
-      description: `Recorded live duration: ${formatClock(currentStepElapsedTime)}`,
-      duration: defaultType === 'prep' ? 0 : currentStepElapsedTime,
-      stepType: defaultType,
+      stepNumber: currentStepNumber,
+      title: `Step ${currentStepNumber}`,
+      description: `Recorded live heat duration: ${formatClock(currentStepElapsedTime)}`,
+      duration: currentStepElapsedTime,
+      stepType: 'heat',
       subActions: finalSubActions,
     };
 
-    setCheckpoints((prev) => [...prev, newCheckpoint]);
+    setCheckpoints((prev) => [...prev, recordedStep]);
 
-    // Reset step timer & sub-actions for next step
+    // Reset step timer & start next step immediately
     setCurrentStepElapsedTime(0);
     setCurrentStepSubActions([]);
-    setActiveStepTitle(`Step ${stepNum + 1}`);
+    setCurrentStepNumber((prev) => prev + 1);
   };
 
-  const handleToggleCheckpointType = (id: string, newType: 'prep' | 'heat') => {
+  // --- FINISH LIVE RECORDING ---
+  const handleFinishRecording = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // Save final step if elapsed time > 0
+    if (currentStepElapsedTime > 0) {
+      let finalSubActions = [...currentStepSubActions];
+      if (activeStirringStart !== null) {
+        finalSubActions.push({
+          id: `sub_${Date.now()}`,
+          type: 'stir',
+          label: 'Stir ingredients continuously',
+          startOffsetSeconds: activeStirringStart,
+          endOffsetSeconds: currentStepElapsedTime,
+        });
+        setActiveStirringStart(null);
+      }
+
+      const finalStep: LiveCheckpoint = {
+        id: `cp_${Date.now()}`,
+        stepNumber: currentStepNumber,
+        title: `Step ${currentStepNumber}`,
+        description: `Recorded live heat duration: ${formatClock(currentStepElapsedTime)}`,
+        duration: currentStepElapsedTime,
+        stepType: 'heat',
+        subActions: finalSubActions,
+      };
+
+      setCheckpoints((prev) => [...prev, finalStep]);
+    }
+
+    setIsReviewPhase(true);
+  };
+
+  // --- POST-LIVE EDITING HANDLERS ---
+  const handleToggleStepType = (id: string, newType: 'prep' | 'heat') => {
     setCheckpoints((prev) =>
       prev.map((cp) => (cp.id === id ? { ...cp, stepType: newType } : cp))
     );
   };
 
-  const handleRemoveCheckpoint = (id: string) => {
-    setCheckpoints((prev) => prev.filter((cp) => cp.id !== id));
-  };
-
-  const handleRemoveSubAction = (checkpointId: string, subId: string) => {
+  const handleUpdateStepTitle = (id: string, text: string) => {
     setCheckpoints((prev) =>
-      prev.map((cp) =>
-        cp.id === checkpointId
-          ? { ...cp, subActions: cp.subActions.filter((s) => s.id !== subId) }
-          : cp
-      )
+      prev.map((cp) => (cp.id === id ? { ...cp, title: text } : cp))
     );
   };
 
-  const handleFinishLiveRecording = () => {
-    if (checkpoints.length === 0 && currentStepElapsedTime > 0) {
-      // Lock in final current step
-      handleMarkCheckpoint('heat');
-    }
+  const handleRemoveStep = (id: string) => {
+    setCheckpoints((prev) => prev.filter((cp) => cp.id !== id));
+  };
 
+  const handleExportToBuilder = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert(
-      'Live Session Complete! 🎉',
-      `Recorded ${checkpoints.length + (currentStepElapsedTime > 0 ? 1 : 0)} steps in ${formatClock(totalElapsedTime)}. Do you want to export these to the Recipe Builder?`,
+      'Export Complete!',
+      'Recorded steps and sub-action reminders have been exported.',
       [
-        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Export to Recipe Builder',
+          text: 'OK',
           onPress: () => {
             setIsRecording(false);
+            setIsReviewPhase(false);
             router.back();
           },
         },
@@ -204,27 +229,34 @@ export default function LiveRecordScreen() {
 
   const borderColor = isDark ? '#333' : '#e5e5e5';
   const cardBg = isDark ? '#1E1E1E' : '#F8F9FA';
+  const isStirring = activeStirringStart !== null;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: Colors[theme].background }]}>
-      <Stack.Screen options={{ title: 'Live Cooking Recording', headerBackTitle: 'Cancel' }} />
+      <Stack.Screen
+        options={{
+          title: isReviewPhase ? 'Edit Checkpoints' : 'Live Cooking Recording',
+          headerBackTitle: 'Cancel',
+        }}
+      />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {!isRecording ? (
+          // SETUP / START SCREEN
           <View style={styles.startSection}>
             <View style={styles.heroBadge}>
               <Ionicons name="videocam" size={24} color="#FF8C00" />
-              <ThemedText style={styles.heroBadgeTitle}>Live Cooking Session Recorder</ThemedText>
+              <ThemedText style={styles.heroBadgeTitle}>Live Cooking Session</ThemedText>
             </View>
             <ThemedText style={styles.heroDesc}>
-              Cook in real time! Physics takes the same time for everyone; knife skills do not. Record your active heat steps, untimed prep checkpoints, and live sub-actions (stir, flip, baste) as they happen.
+              Cook in real time! Start your session to immediately begin Step 1. Tap "Next Step" to record checkpoints and log sub-actions (Start/End Stirring, Flip). Edit step types (Prep vs Heat) after cooking finishes.
             </ThemedText>
 
             <View style={styles.inputBlock}>
               <ThemedText style={styles.inputLabel}>Recipe Title</ThemedText>
               <TextInput
                 style={[styles.titleInput, { color: Colors[theme].text, borderColor }]}
-                placeholder="e.g. Pan-Seared Garlic Butter Ribeye"
+                placeholder="e.g. Pan-Seared Garlic Butter Steak"
                 placeholderTextColor="#888"
                 value={recipeTitle}
                 onChangeText={setRecipeTitle}
@@ -233,111 +265,211 @@ export default function LiveRecordScreen() {
 
             <Pressable style={styles.startBtn} onPress={startRecordingSession}>
               <Ionicons name="radio-button-on" size={20} color="#fff" />
-              <ThemedText style={styles.startBtnText}>Start Live Cooking Recording</ThemedText>
+              <ThemedText style={styles.startBtnText}>Start Live Cooking Session</ThemedText>
             </Pressable>
           </View>
-        ) : (
-          <View style={styles.activeRecordingSection}>
-            {/* Live Indicator Header */}
-            <View style={styles.liveHeaderBar}>
+        ) : !isReviewPhase ? (
+          // ACTIVE LIVE COOKING RECORDING VIEW (COMPACT)
+          <View style={styles.compactLiveSection}>
+            {/* Compact Header Bar */}
+            <View style={styles.compactHeaderBar}>
               <View style={styles.liveTag}>
                 <View style={styles.liveRedDot} />
-                <ThemedText style={styles.liveTagText}>LIVE RECORDING</ThemedText>
+                <ThemedText style={styles.liveTagText}>LIVE</ThemedText>
               </View>
               <ThemedText style={styles.totalTimerText}>
-                Total Time: <ThemedText style={styles.totalTimerBold}>{formatClock(totalElapsedTime)}</ThemedText>
+                Session: <ThemedText style={styles.totalTimerBold}>{formatClock(totalElapsedTime)}</ThemedText>
               </ThemedText>
+              <Pressable style={styles.pauseIconBtn} onPress={togglePauseSession}>
+                <Ionicons name={isPaused ? 'play' : 'pause'} size={18} color={Colors[theme].text} />
+              </Pressable>
             </View>
 
-            {/* Current Step Segment Box */}
-            <View style={[styles.currentStepCard, { backgroundColor: cardBg, borderColor }]}>
-              <View style={styles.currentStepHeader}>
-                <ThemedText style={styles.currentStepNumberText}>
-                  STEP {checkpoints.length + 1} SEGMENT
-                </ThemedText>
-                <Pressable style={styles.pauseBtn} onPress={togglePauseSession}>
-                  <Ionicons name={isPaused ? 'play' : 'pause'} size={16} color={Colors[theme].text} />
-                  <ThemedText style={styles.pauseBtnText}>{isPaused ? 'Resume' : 'Pause'}</ThemedText>
+            {/* Active Step Card */}
+            <View style={[styles.activeStepCard, { backgroundColor: cardBg, borderColor }]}>
+              <View style={styles.stepHeaderRow}>
+                <View style={styles.stepPill}>
+                  <ThemedText style={styles.stepPillText}>STEP {currentStepNumber}</ThemedText>
+                </View>
+                <ThemedText style={styles.stepClockText}>{formatClock(currentStepElapsedTime)}</ThemedText>
+              </View>
+
+              {/* Glowing Stirring Active Banner */}
+              {isStirring && (
+                <View style={styles.stirringActiveBanner}>
+                  <Ionicons name="sync" size={16} color="#fff" />
+                  <ThemedText style={styles.stirringActiveText}>
+                    Stirring in progress ({formatClock(currentStepElapsedTime - (activeStirringStart || 0))})
+                  </ThemedText>
+                </View>
+              )}
+
+              {/* Compact Action Buttons Row */}
+              <View style={styles.actionButtonsRow}>
+                {/* Stirring Toggle Button */}
+                <Pressable
+                  style={[
+                    styles.actionBtn,
+                    isStirring ? styles.actionBtnActiveStir : styles.actionBtnStir,
+                  ]}
+                  onPress={handleToggleStirring}
+                >
+                  <Ionicons name="sync-outline" size={16} color={isStirring ? '#fff' : '#FF8C00'} />
+                  <ThemedText style={[styles.actionBtnText, isStirring && styles.actionBtnTextActive]}>
+                    {isStirring ? 'End Stirring' : 'Start Stirring'}
+                  </ThemedText>
+                </Pressable>
+
+                {/* Flip Action Button (Disabled while stirring is active) */}
+                <Pressable
+                  style={[styles.actionBtn, styles.actionBtnFlip, isStirring && styles.actionBtnDisabled]}
+                  onPress={handleAddFlipAction}
+                  disabled={isStirring}
+                >
+                  <Ionicons name="restaurant-outline" size={16} color={isStirring ? '#bbb' : '#FF8C00'} />
+                  <ThemedText style={[styles.actionBtnText, isStirring && { color: '#bbb' }]}>
+                    Flip Food
+                  </ThemedText>
                 </Pressable>
               </View>
 
-              <View style={styles.stepClockCenter}>
-                <ThemedText style={styles.stepClockText}>{formatClock(currentStepElapsedTime)}</ThemedText>
-                <ThemedText style={styles.stepClockSub}>Step Elapsed Seconds</ThemedText>
-              </View>
+              {/* Logged sub-actions in current step */}
+              {currentStepSubActions.length > 0 && (
+                <View style={styles.loggedSubActionsRow}>
+                  {currentStepSubActions.map((sub) => (
+                    <View key={sub.id} style={styles.subActionChip}>
+                      <Ionicons
+                        name={sub.type === 'stir' ? 'sync' : 'restaurant'}
+                        size={12}
+                        color="#D97706"
+                      />
+                      <ThemedText style={styles.subActionChipText}>
+                        {sub.type === 'stir'
+                          ? `Stir (${formatClock(sub.startOffsetSeconds)} - ${formatClock(sub.endOffsetSeconds || 0)})`
+                          : `Flip (${formatClock(sub.startOffsetSeconds)})`}
+                      </ThemedText>
+                    </View>
+                  ))}
+                </View>
+              )}
 
-              <TextInput
-                style={[styles.stepTitleInput, { color: Colors[theme].text, borderColor }]}
-                placeholder={`Step ${checkpoints.length + 1} Title (e.g. Sauté garlic & aromatics)`}
-                placeholderTextColor="#888"
-                value={activeStepTitle}
-                onChangeText={setActiveStepTitle}
-              />
+              {/* Primary Next Step Button */}
+              <Pressable style={styles.nextStepBtn} onPress={handleNextStep}>
+                <ThemedText style={styles.nextStepBtnText}>Next Step →</ThemedText>
+              </Pressable>
+            </View>
 
-              {/* Sub-Actions Trigger Bar */}
-              <View style={styles.subActionTriggerSection}>
-                <ThemedText style={styles.subActionTriggerHeader}>Record Sub-Action Reminders for Next Users:</ThemedText>
-                <View style={styles.subActionButtonsGrid}>
-                  {/* Stirring Button */}
-                  <Pressable
-                    style={[
-                      styles.subActionBtn,
-                      activeStirringStart !== null && styles.subActionBtnActiveStir,
-                    ]}
-                    onPress={handleToggleStirringReminder}
-                  >
-                    <Ionicons
-                      name="sync-outline"
-                      size={16}
-                      color={activeStirringStart !== null ? '#fff' : '#FF8C00'}
-                    />
-                    <ThemedText
-                      style={[
-                        styles.subActionBtnText,
-                        activeStirringStart !== null && styles.subActionBtnTextActive,
-                      ]}
-                    >
-                      {activeStirringStart !== null
-                        ? `Stop Stirring (${formatClock(currentStepElapsedTime - activeStirringStart)})`
-                        : 'Start Stirring'}
+            {/* Checkpoints Recorded Read-Only List */}
+            {checkpoints.length > 0 && (
+              <View style={styles.checkpointsSummaryBlock}>
+                <ThemedText style={styles.checkpointsSummaryTitle}>
+                  Recorded Checkpoints ({checkpoints.length}):
+                </ThemedText>
+                {checkpoints.map((cp) => (
+                  <View key={cp.id} style={[styles.cpSummaryRow, { borderColor }]}>
+                    <View style={styles.cpSummaryBadge}>
+                      <ThemedText style={styles.cpSummaryBadgeText}>Step {cp.stepNumber}</ThemedText>
+                    </View>
+                    <ThemedText style={styles.cpSummaryTime}>{formatClock(cp.duration)}</ThemedText>
+                    <ThemedText style={styles.cpSummarySubCount}>
+                      {cp.subActions.length > 0 ? `${cp.subActions.length} actions` : 'No sub-actions'}
                     </ThemedText>
-                  </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
 
-                  {/* Flip Button */}
-                  <Pressable
-                    style={styles.subActionBtn}
-                    onPress={() => handleAddPointSubAction('flip', 'Flip ingredient to other side')}
-                  >
-                    <Ionicons name="restaurant-outline" size={16} color="#FF8C00" />
-                    <ThemedText style={styles.subActionBtnText}>Flip Meat/Ingredient</ThemedText>
-                  </Pressable>
+            {/* Finish Live Session Button */}
+            <Pressable style={styles.finishSessionBtn} onPress={handleFinishRecording}>
+              <Ionicons name="stop-circle-outline" size={20} color="#fff" />
+              <ThemedText style={styles.finishSessionBtnText}>Finish Live Cooking Session</ThemedText>
+            </Pressable>
+          </View>
+        ) : (
+          // POST-LIVE EDITING & REVIEW PHASE (After Live Session Finishes)
+          <View style={styles.reviewSection}>
+            <View style={styles.reviewHeaderCard}>
+              <Ionicons name="checkmark-done-circle" size={32} color="#10B981" />
+              <ThemedText style={styles.reviewHeaderTitle}>Live Session Complete!</ThemedText>
+              <ThemedText style={styles.reviewHeaderSub}>
+                Recorded {checkpoints.length} steps in {formatClock(totalElapsedTime)}. Edit step types and titles before exporting.
+              </ThemedText>
+            </View>
 
-                  {/* Baste Button */}
-                  <Pressable
-                    style={styles.subActionBtn}
-                    onPress={() => handleAddPointSubAction('baste', 'Baste with pan sauce/butter')}
-                  >
-                    <Ionicons name="color-palette-outline" size={16} color="#FF8C00" />
-                    <ThemedText style={styles.subActionBtnText}>Baste / Add Butter</ThemedText>
-                  </Pressable>
+            <ThemedText style={styles.reviewListTitle}>Edit Recorded Checkpoints:</ThemedText>
 
-                  {/* Check Doneness */}
-                  <Pressable
-                    style={styles.subActionBtn}
-                    onPress={() => handleAddPointSubAction('check', 'Check temperature & doneness')}
-                  >
-                    <Ionicons name="speedometer-outline" size={16} color="#FF8C00" />
-                    <ThemedText style={styles.subActionBtnText}>Check Doneness</ThemedText>
+            {checkpoints.map((cp, idx) => (
+              <View key={cp.id} style={[styles.editCpCard, { backgroundColor: cardBg, borderColor }]}>
+                <View style={styles.editCpHeader}>
+                  <View style={styles.stepPill}>
+                    <ThemedText style={styles.stepPillText}>Step {idx + 1}</ThemedText>
+                  </View>
+                  <TextInput
+                    style={[styles.editTitleInput, { color: Colors[theme].text, borderColor }]}
+                    placeholder={`Step ${idx + 1} Title`}
+                    placeholderTextColor="#888"
+                    value={cp.title}
+                    onChangeText={(val) => handleUpdateStepTitle(cp.id, val)}
+                  />
+                  <Pressable onPress={() => handleRemoveStep(cp.id)} style={styles.removeStepBtn}>
+                    <Ionicons name="trash-outline" size={18} color="#ff4444" />
                   </Pressable>
                 </View>
 
-                {/* Sub-actions recorded in current step */}
-                {currentStepSubActions.length > 0 && (
-                  <View style={styles.currentSubActionsList}>
-                    {currentStepSubActions.map((sub) => (
-                      <View key={sub.id} style={styles.subActionPill}>
-                        <Ionicons name="notifications-outline" size={12} color="#FF8C00" />
-                        <ThemedText style={styles.subActionPillText}>
+                {/* Step Type Toggle (Untimed Prep vs Timed Heat) */}
+                <View style={styles.stepTypeToggleRow}>
+                  <Pressable
+                    style={[
+                      styles.typeOptionBtn,
+                      cp.stepType === 'prep' && styles.typeOptionPrepActive,
+                    ]}
+                    onPress={() => handleToggleStepType(cp.id, 'prep')}
+                  >
+                    <Ionicons
+                      name="cut-outline"
+                      size={14}
+                      color={cp.stepType === 'prep' ? '#fff' : '#666'}
+                    />
+                    <ThemedText
+                      style={[
+                        styles.typeOptionText,
+                        cp.stepType === 'prep' && styles.typeOptionTextActive,
+                      ]}
+                    >
+                      Untimed Prep Step
+                    </ThemedText>
+                  </Pressable>
+
+                  <Pressable
+                    style={[
+                      styles.typeOptionBtn,
+                      cp.stepType === 'heat' && styles.typeOptionHeatActive,
+                    ]}
+                    onPress={() => handleToggleStepType(cp.id, 'heat')}
+                  >
+                    <Ionicons
+                      name="flame-outline"
+                      size={14}
+                      color={cp.stepType === 'heat' ? '#fff' : '#666'}
+                    />
+                    <ThemedText
+                      style={[
+                        styles.typeOptionText,
+                        cp.stepType === 'heat' && styles.typeOptionTextActive,
+                      ]}
+                    >
+                      Timed Heat ({formatClock(cp.duration)})
+                    </ThemedText>
+                  </Pressable>
+                </View>
+
+                {/* Sub-actions list */}
+                {cp.subActions.length > 0 && (
+                  <View style={styles.subActionsReviewList}>
+                    {cp.subActions.map((sub) => (
+                      <View key={sub.id} style={styles.subActionReviewItem}>
+                        <Ionicons name="notifications-outline" size={14} color="#FF8C00" />
+                        <ThemedText style={styles.subActionReviewText}>
                           {sub.type.toUpperCase()}: {sub.label} at {formatClock(sub.startOffsetSeconds)}
                           {sub.endOffsetSeconds ? ` - ${formatClock(sub.endOffsetSeconds)}` : ''}
                         </ThemedText>
@@ -346,103 +478,11 @@ export default function LiveRecordScreen() {
                   </View>
                 )}
               </View>
+            ))}
 
-              {/* Checkpoint Creation Buttons */}
-              <View style={styles.checkpointActionRow}>
-                <Pressable
-                  style={[styles.checkpointBtn, { backgroundColor: '#10B981' }]}
-                  onPress={() => handleMarkCheckpoint('prep')}
-                >
-                  <Ionicons name="cut-outline" size={16} color="#fff" />
-                  <ThemedText style={styles.checkpointBtnText}>Mark as Untimed Prep</ThemedText>
-                </Pressable>
-
-                <Pressable
-                  style={[styles.checkpointBtn, { backgroundColor: '#FF8C00' }]}
-                  onPress={() => handleMarkCheckpoint('heat')}
-                >
-                  <Ionicons name="flame-outline" size={16} color="#fff" />
-                  <ThemedText style={styles.checkpointBtnText}>
-                    Mark Checkpoint ({formatClock(currentStepElapsedTime)})
-                  </ThemedText>
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Checkpoints Recorded List */}
-            {checkpoints.length > 0 && (
-              <View style={styles.checkpointsListBlock}>
-                <ThemedText style={styles.checkpointsListHeader}>
-                  Recorded Checkpoints ({checkpoints.length}):
-                </ThemedText>
-
-                {checkpoints.map((cp, idx) => (
-                  <View key={cp.id} style={[styles.cpCard, { backgroundColor: cardBg, borderColor }]}>
-                    <View style={styles.cpHeader}>
-                      <View style={styles.cpBadge}>
-                        <ThemedText style={styles.cpBadgeText}>Step {idx + 1}</ThemedText>
-                      </View>
-                      <ThemedText style={styles.cpTitle}>{cp.title}</ThemedText>
-
-                      <Pressable onPress={() => handleRemoveCheckpoint(cp.id)} style={styles.cpRemoveBtn}>
-                        <Ionicons name="trash-outline" size={16} color="#ff4444" />
-                      </Pressable>
-                    </View>
-
-                    {/* Step Type Toggle */}
-                    <View style={styles.cpTypeRow}>
-                      <Pressable
-                        style={[
-                          styles.cpTypeBtn,
-                          cp.stepType === 'prep' && styles.cpTypeBtnActivePrep,
-                        ]}
-                        onPress={() => handleToggleCheckpointType(cp.id, 'prep')}
-                      >
-                        <Ionicons name="cut-outline" size={12} color={cp.stepType === 'prep' ? '#fff' : '#888'} />
-                        <ThemedText style={[styles.cpTypeBtnText, cp.stepType === 'prep' && styles.cpTypeBtnTextActive]}>
-                          Untimed Prep
-                        </ThemedText>
-                      </Pressable>
-
-                      <Pressable
-                        style={[
-                          styles.cpTypeBtn,
-                          cp.stepType === 'heat' && styles.cpTypeBtnActiveHeat,
-                        ]}
-                        onPress={() => handleToggleCheckpointType(cp.id, 'heat')}
-                      >
-                        <Ionicons name="flame-outline" size={12} color={cp.stepType === 'heat' ? '#fff' : '#888'} />
-                        <ThemedText style={[styles.cpTypeBtnText, cp.stepType === 'heat' && styles.cpTypeBtnTextActive]}>
-                          Timed Heat ({formatClock(cp.duration)})
-                        </ThemedText>
-                      </Pressable>
-                    </View>
-
-                    {/* Sub-actions in checkpoint */}
-                    {cp.subActions.length > 0 && (
-                      <View style={styles.cpSubActionsBlock}>
-                        {cp.subActions.map((sub) => (
-                          <View key={sub.id} style={styles.cpSubItem}>
-                            <Ionicons name="notifications-circle-outline" size={14} color="#FF8C00" />
-                            <ThemedText style={styles.cpSubItemText}>
-                              {sub.type.toUpperCase()}: {sub.label} ({formatClock(sub.startOffsetSeconds)}
-                              {sub.endOffsetSeconds ? ` - ${formatClock(sub.endOffsetSeconds)}` : ''})
-                            </ThemedText>
-                            <Pressable onPress={() => handleRemoveSubAction(cp.id, sub.id)}>
-                              <Ionicons name="close-circle" size={14} color="#888" />
-                            </Pressable>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                ))}
-              </View>
-            )}
-
-            <Pressable style={styles.finishLiveBtn} onPress={handleFinishLiveRecording}>
-              <Ionicons name="checkmark-done" size={20} color="#fff" />
-              <ThemedText style={styles.finishLiveBtnText}>Finish Session & Export to Recipe Builder</ThemedText>
+            <Pressable style={styles.exportBtn} onPress={handleExportToBuilder}>
+              <Ionicons name="arrow-forward-circle" size={22} color="#fff" />
+              <ThemedText style={styles.exportBtnText}>Export to Recipe Builder</ThemedText>
             </Pressable>
           </View>
         )}
@@ -453,102 +493,17 @@ export default function LiveRecordScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { padding: Spacing.lg, paddingBottom: Spacing.xxl },
+  scrollContent: { padding: Spacing.md, paddingBottom: Spacing.xxl },
 
-  startSection: { gap: Spacing.md, marginTop: Spacing.md },
-  heroBadge: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  // SETUP SCREEN
+  startSection: { gap: Spacing.md, marginTop: Spacing.sm },
+  heroBadge: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   heroBadgeTitle: { fontSize: 20, fontWeight: '700', color: '#FF8C00' },
-  heroDesc: { fontSize: 14, color: '#888', lineHeight: 20 },
-  inputBlock: { gap: 6, marginTop: Spacing.sm },
+  heroDesc: { fontSize: 13, color: '#888', lineHeight: 19 },
+  inputBlock: { gap: 6, marginTop: Spacing.xs },
   inputLabel: { fontSize: 13, fontWeight: '700', color: '#FF8C00' },
   titleInput: { borderWidth: 1, borderRadius: Radius.md, padding: 12, fontSize: 15 },
   startBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#FF8C00',
-    paddingVertical: 14,
-    borderRadius: Radius.full,
-    marginTop: Spacing.md,
-  },
-  startBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-  activeRecordingSection: { gap: Spacing.md },
-  liveHeaderBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#FFF3E0',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: Radius.sm,
-  },
-  liveTag: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  liveRedDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' },
-  liveTagText: { fontSize: 12, fontWeight: '800', color: '#EF4444', letterSpacing: 0.5 },
-  totalTimerText: { fontSize: 13, color: '#666' },
-  totalTimerBold: { fontWeight: '700', color: '#FF8C00', fontVariant: ['tabular-nums'] },
-
-  currentStepCard: { borderWidth: 1.5, borderRadius: Radius.lg, padding: Spacing.md, gap: Spacing.md },
-  currentStepHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  currentStepNumberText: { fontSize: 12, fontWeight: '800', color: '#FF8C00', letterSpacing: 0.5 },
-  pauseBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full, backgroundColor: '#eee' },
-  pauseBtnText: { fontSize: 12, fontWeight: '600' },
-
-  stepClockCenter: { alignItems: 'center', marginVertical: 4 },
-  stepClockText: { fontSize: 40, fontWeight: 'bold', color: '#FF8C00', fontVariant: ['tabular-nums'] },
-  stepClockSub: { fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
-
-  stepTitleInput: { borderWidth: 1, borderRadius: Radius.sm, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, fontWeight: '600' },
-
-  subActionTriggerSection: { gap: 6, paddingTop: 4 },
-  subActionTriggerHeader: { fontSize: 11, fontWeight: '700', color: '#FF8C00', textTransform: 'uppercase', letterSpacing: 0.3 },
-  subActionButtonsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  subActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: '#FF8C00',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: Radius.sm,
-    backgroundColor: '#FFF8F0',
-  },
-  subActionBtnActiveStir: { backgroundColor: '#FF8C00', borderColor: '#FF8C00' },
-  subActionBtnText: { fontSize: 12, fontWeight: '600', color: '#FF8C00' },
-  subActionBtnTextActive: { color: '#fff', fontWeight: '700' },
-
-  currentSubActionsList: { gap: 4, marginTop: 4 },
-  subActionPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF3E0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.sm },
-  subActionPillText: { fontSize: 11, color: '#D97706', fontWeight: '600' },
-
-  checkpointActionRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
-  checkpointBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: Radius.md },
-  checkpointBtnText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-
-  checkpointsListBlock: { gap: Spacing.sm, marginTop: Spacing.sm },
-  checkpointsListHeader: { fontSize: 14, fontWeight: '700', color: '#FF8C00' },
-  cpCard: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.md, gap: 8 },
-  cpHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cpBadge: { backgroundColor: '#FF8C0022', paddingHorizontal: 8, paddingVertical: 2, borderRadius: Radius.sm },
-  cpBadgeText: { fontSize: 11, fontWeight: '700', color: '#FF8C00' },
-  cpTitle: { flex: 1, fontSize: 14, fontWeight: '700' },
-  cpRemoveBtn: { padding: 4 },
-
-  cpTypeRow: { flexDirection: 'row', gap: 8 },
-  cpTypeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 6, borderRadius: Radius.sm, borderWidth: 1, borderColor: '#ccc' },
-  cpTypeBtnActivePrep: { backgroundColor: '#10B981', borderColor: '#10B981' },
-  cpTypeBtnActiveHeat: { backgroundColor: '#FF8C00', borderColor: '#FF8C00' },
-  cpTypeBtnText: { fontSize: 11, fontWeight: '600', color: '#666' },
-  cpTypeBtnTextActive: { color: '#fff', fontWeight: '700' },
-
-  cpSubActionsBlock: { gap: 4, marginTop: 2 },
-  cpSubItem: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF4E6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.sm },
-  cpSubItemText: { flex: 1, fontSize: 11, color: '#D97706', fontWeight: '600' },
-
-  finishLiveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -558,5 +513,180 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     marginTop: Spacing.md,
   },
-  finishLiveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  startBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+
+  // COMPACT LIVE RECORDING VIEW
+  compactLiveSection: { gap: Spacing.md },
+  compactHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.sm,
+  },
+  liveTag: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  liveRedDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
+  liveTagText: { fontSize: 11, fontWeight: '800', color: '#EF4444', letterSpacing: 0.5 },
+  totalTimerText: { fontSize: 13, color: '#666' },
+  totalTimerBold: { fontWeight: '700', color: '#FF8C00', fontVariant: ['tabular-nums'] },
+  pauseIconBtn: { padding: 4 },
+
+  activeStepCard: {
+    borderWidth: 1.5,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  stepHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  stepPill: {
+    backgroundColor: '#FF8C0022',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: Radius.sm,
+  },
+  stepPillText: { fontSize: 12, fontWeight: '800', color: '#FF8C00' },
+  stepClockText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FF8C00',
+    fontVariant: ['tabular-nums'],
+  },
+
+  stirringActiveBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FF8C00',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: Radius.sm,
+  },
+  stirringActiveText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#FF8C00',
+    paddingVertical: 9,
+    borderRadius: Radius.sm,
+    backgroundColor: '#FFF8F0',
+  },
+  actionBtnStir: { borderColor: '#FF8C00' },
+  actionBtnActiveStir: { backgroundColor: '#FF8C00', borderColor: '#FF8C00' },
+  actionBtnFlip: { borderColor: '#FF8C00' },
+  actionBtnDisabled: { opacity: 0.4, borderColor: '#ccc' },
+  actionBtnText: { fontSize: 12, fontWeight: '700', color: '#FF8C00' },
+  actionBtnTextActive: { color: '#fff' },
+
+  loggedSubActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  subActionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.sm,
+  },
+  subActionChipText: { fontSize: 11, fontWeight: '600', color: '#D97706' },
+
+  nextStepBtn: {
+    backgroundColor: '#FF8C00',
+    paddingVertical: 12,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  nextStepBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  checkpointsSummaryBlock: { gap: 6, marginTop: Spacing.xs },
+  checkpointsSummaryTitle: { fontSize: 12, fontWeight: '700', color: '#888' },
+  cpSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderRadius: Radius.sm,
+  },
+  cpSummaryBadge: { backgroundColor: '#eee', paddingHorizontal: 6, paddingVertical: 2, borderRadius: Radius.sm },
+  cpSummaryBadgeText: { fontSize: 11, fontWeight: '700', color: '#555' },
+  cpSummaryTime: { fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  cpSummarySubCount: { fontSize: 11, color: '#888', marginLeft: 'auto' },
+
+  finishSessionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#EF4444',
+    paddingVertical: 13,
+    borderRadius: Radius.full,
+    marginTop: Spacing.xs,
+  },
+  finishSessionBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  // POST-LIVE REVIEW & EDITING VIEW
+  reviewSection: { gap: Spacing.md },
+  reviewHeaderCard: { alignItems: 'center', gap: 6, paddingVertical: Spacing.md },
+  reviewHeaderTitle: { fontSize: 20, fontWeight: '700', color: '#10B981' },
+  reviewHeaderSub: { fontSize: 13, color: '#666', textAlign: 'center' },
+  reviewListTitle: { fontSize: 14, fontWeight: '700', color: '#FF8C00' },
+
+  editCpCard: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.md, gap: Spacing.sm },
+  editCpHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  editTitleInput: { flex: 1, borderWidth: 1, borderRadius: Radius.sm, paddingHorizontal: 10, paddingVertical: 6, fontSize: 14, fontWeight: '600' },
+  removeStepBtn: { padding: 4 },
+
+  stepTypeToggleRow: { flexDirection: 'row', gap: 8 },
+  typeOptionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: '#ccc',
+  },
+  typeOptionPrepActive: { backgroundColor: '#10B981', borderColor: '#10B981' },
+  typeOptionHeatActive: { backgroundColor: '#FF8C00', borderColor: '#FF8C00' },
+  typeOptionText: { fontSize: 12, fontWeight: '600', color: '#666' },
+  typeOptionTextActive: { color: '#fff', fontWeight: '700' },
+
+  subActionsReviewList: { gap: 4, marginTop: 2 },
+  subActionReviewItem: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF4E6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.sm },
+  subActionReviewText: { fontSize: 11, color: '#D97706', fontWeight: '600' },
+
+  exportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FF8C00',
+    paddingVertical: 14,
+    borderRadius: Radius.full,
+    marginTop: Spacing.md,
+  },
+  exportBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
