@@ -6,7 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { backendAPI } from '@/services/backend';
-import { Post } from '@/types/post';
+import { Post, SubActionReminder } from '@/types/post';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { StepProgressBar } from '@/components/ui/step-progress-bar';
@@ -30,6 +30,20 @@ const formatStepDuration = (durationSecs?: number | null) => {
   if (m > 0 && s > 0) return `${m}m ${s}s`;
   if (m > 0) return `${m} min`;
   return `${s} sec`;
+};
+
+const getSubActionColor = (type: string) => {
+  if (type === 'flip') return '#EF4444'; // Red for Flip!
+  if (type === 'stir') return '#FF8C00'; // Amber Orange for Stir!
+  if (type === 'baste') return '#3B82F6'; // Blue for Baste!
+  return '#FF8C00';
+};
+
+const getSubActionIcon = (type: string) => {
+  if (type === 'flip') return 'restaurant-outline';
+  if (type === 'stir') return 'sync-outline';
+  if (type === 'baste') return 'color-palette-outline';
+  return 'notifications-outline';
 };
 
 export default function CookModeScreen() {
@@ -102,17 +116,52 @@ export default function CookModeScreen() {
     });
   }, [activeStep, post?.recipe_ingredients]);
 
-  // Extract active sub-action reminders for current timestamp
-  const activeSubActions = useMemo(() => {
+  // Extract step sub-action reminders (recorded or smart fallbacks)
+  const stepSubActions = useMemo((): SubActionReminder[] => {
     if (!activeStep) return [];
-    const list = activeStep.sub_actions || activeStep.subActions || [];
-    return list.filter((sub) => {
+    const list = activeStep.sub_actions || activeStep.subActions;
+    if (list && list.length > 0) return list;
+
+    // Fallback smart sub-action cues if author did not explicitly record them
+    const titleLower = (activeStep.title || '').toLowerCase();
+    const dur = activeStep.duration || 0;
+
+    if (dur >= 30) {
+      if (titleLower.includes('saute') || titleLower.includes('sauté') || titleLower.includes('stir-fry')) {
+        return [
+          {
+            id: 'auto_stir',
+            type: 'stir',
+            label: 'Stir ingredients in the pan continuously',
+            startOffsetSeconds: Math.floor(dur * 0.2),
+            endOffsetSeconds: Math.floor(dur * 0.8),
+          },
+        ];
+      }
+      if (titleLower.includes('sear') || titleLower.includes('steak') || titleLower.includes('pancake') || titleLower.includes('fry')) {
+        return [
+          {
+            id: 'auto_flip',
+            type: 'flip',
+            label: 'Flip food to the other side for even searing',
+            startOffsetSeconds: Math.floor(dur * 0.5),
+          },
+        ];
+      }
+    }
+
+    return [];
+  }, [activeStep]);
+
+  // Active sub-actions for current timestamp
+  const activeSubActions = useMemo(() => {
+    return stepSubActions.filter((sub) => {
       if (sub.endOffsetSeconds) {
         return stepElapsedTime >= sub.startOffsetSeconds && stepElapsedTime <= sub.endOffsetSeconds;
       }
-      return Math.abs(stepElapsedTime - sub.startOffsetSeconds) <= 4;
+      return stepElapsedTime >= sub.startOffsetSeconds && stepElapsedTime < sub.startOffsetSeconds + 8;
     });
-  }, [activeStep, stepElapsedTime]);
+  }, [stepSubActions, stepElapsedTime]);
 
   useEffect(() => {
     if (phase !== 'cooking' || !isPlaying || isPrepStep) return;
@@ -138,7 +187,7 @@ export default function CookModeScreen() {
     firedSubActionsRef.current = new Set();
   }, [activeStepIndex]);
 
-  // Sub-action notification trigger
+  // Sub-action notification trigger with heavy haptics
   useEffect(() => {
     if (!isPlaying || activeSubActions.length === 0) return;
     activeSubActions.forEach((sub) => {
@@ -146,6 +195,9 @@ export default function CookModeScreen() {
       if (!firedSubActionsRef.current.has(key)) {
         firedSubActionsRef.current.add(key);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        if (Platform.OS !== 'web') {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        }
       }
     });
   }, [activeSubActions, activeStepIndex, isPlaying]);
@@ -346,32 +398,28 @@ export default function CookModeScreen() {
             </View>
           ) : (
             <>
-              {/* Active Sub-Actions Pop-up Reminder Banner */}
+              {/* ACTIVE SUB-ACTION REMINDER BANNER (STIRRING & FLIPPING NOTICES) */}
               {activeSubActions.length > 0 && (
                 <View style={styles.subActionNoticeBox}>
-                  {activeSubActions.map((sub) => (
-                    <View key={sub.id} style={styles.subActionNoticeBanner}>
-                      <Ionicons
-                        name={
-                          sub.type === 'stir'
-                            ? 'sync'
-                            : sub.type === 'flip'
-                            ? 'restaurant'
-                            : sub.type === 'baste'
-                            ? 'color-palette'
-                            : 'notifications'
-                        }
-                        size={20}
-                        color="#fff"
-                      />
-                      <View style={{ flex: 1 }}>
-                        <ThemedText style={styles.subActionNoticeTitle}>
-                          {sub.type.toUpperCase()} REMINDER
-                        </ThemedText>
-                        <ThemedText style={styles.subActionNoticeText}>{sub.label}</ThemedText>
+                  {activeSubActions.map((sub) => {
+                    const bgColor = getSubActionColor(sub.type);
+                    const iconName = getSubActionIcon(sub.type);
+                    return (
+                      <View key={sub.id} style={[styles.subActionNoticeBanner, { backgroundColor: bgColor }]}>
+                        <Ionicons name={iconName as any} size={24} color="#fff" />
+                        <View style={{ flex: 1 }}>
+                          <ThemedText style={styles.subActionNoticeTitle}>
+                            {sub.type === 'stir'
+                              ? '⚡ STIR INGREDIENTS NOW!'
+                              : sub.type === 'flip'
+                              ? '⚡ FLIP FOOD NOW!'
+                              : `${sub.type.toUpperCase()} REMINDER`}
+                          </ThemedText>
+                          <ThemedText style={styles.subActionNoticeText}>{sub.label}</ThemedText>
+                        </View>
                       </View>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               )}
 
@@ -461,6 +509,68 @@ export default function CookModeScreen() {
             <ThemedText style={styles.nextDesc}>
               {activeStep.description}
             </ThemedText>
+
+            {/* SUB-ACTION TIMELINE AGENDA (Stirring / Flipping Checklist) */}
+            {stepSubActions.length > 0 && (
+              <View style={styles.subActionAgendaSection}>
+                <View style={styles.subActionAgendaHeader}>
+                  <Ionicons name="notifications-outline" size={14} color="#FF8C00" />
+                  <ThemedText style={styles.subActionAgendaHeaderTitle}>
+                    Sub-Action Reminders for this Step:
+                  </ThemedText>
+                </View>
+                {stepSubActions.map((sub) => {
+                  const isActiveNow = activeSubActions.some((a) => a.id === sub.id);
+                  const isCompleted = sub.endOffsetSeconds
+                    ? stepElapsedTime > sub.endOffsetSeconds
+                    : stepElapsedTime >= sub.startOffsetSeconds + 8;
+
+                  return (
+                    <View
+                      key={sub.id}
+                      style={[
+                        styles.subActionAgendaRow,
+                        isActiveNow && styles.subActionAgendaRowActive,
+                        {
+                          backgroundColor: isDark ? '#2A2A2A' : '#FFF8F0',
+                          borderColor: isActiveNow ? getSubActionColor(sub.type) : '#EAEAEA',
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={getSubActionIcon(sub.type) as any}
+                        size={16}
+                        color={isActiveNow ? getSubActionColor(sub.type) : isCompleted ? '#10B981' : '#888'}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <ThemedText
+                          style={[
+                            styles.subActionAgendaText,
+                            isCompleted && { textDecorationLine: 'line-through', color: '#888' },
+                          ]}
+                        >
+                          {sub.label}
+                        </ThemedText>
+                        <ThemedText style={styles.subActionAgendaTime}>
+                          {sub.type.toUpperCase()}: {formatClock(sub.startOffsetSeconds)}
+                          {sub.endOffsetSeconds ? ` - ${formatClock(sub.endOffsetSeconds)}` : ''}
+                        </ThemedText>
+                      </View>
+
+                      {isActiveNow ? (
+                        <View style={[styles.activePill, { backgroundColor: getSubActionColor(sub.type) }]}>
+                          <ThemedText style={styles.activePillText}>Active Now ⚡</ThemedText>
+                        </View>
+                      ) : isCompleted ? (
+                        <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+                      ) : (
+                        <ThemedText style={styles.upcomingText}>Upcoming</ThemedText>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
             {/* Needed Ingredients Display for the active step */}
             {activeStepIngredients.length > 0 && (
@@ -638,27 +748,27 @@ const styles = StyleSheet.create({
   subActionNoticeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#FF8C00',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: Radius.md,
-    shadowColor: '#FF8C00',
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
   },
   subActionNoticeTitle: {
     color: '#fff',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   subActionNoticeText: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
+    marginTop: 1,
   },
 
   // Untimed Prep Step Card View
@@ -740,6 +850,64 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: '#666',
+  },
+
+  // Sub-action agenda section inside nextCard
+  subActionAgendaSection: {
+    marginTop: Spacing.xs,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#EAEAEA44',
+    gap: 6,
+  },
+  subActionAgendaHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  subActionAgendaHeaderTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FF8C00',
+    letterSpacing: 0.3,
+  },
+  subActionAgendaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+  },
+  subActionAgendaRowActive: {
+    backgroundColor: '#FFF4E6',
+  },
+  subActionAgendaText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  subActionAgendaTime: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 1,
+    fontVariant: ['tabular-nums'],
+  },
+  activePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.full,
+  },
+  activePillText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  upcomingText: {
+    fontSize: 11,
+    color: '#888',
+    fontWeight: '600',
   },
 
   // Ingredients display section
