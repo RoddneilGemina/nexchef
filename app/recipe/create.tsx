@@ -482,28 +482,25 @@ export default function CreateRecipeScreen() {
 
     const stepsToPost = stepsWithTiming.filter((s) => s.title.trim());
     if (stepsToPost.length === 0) {
-      Alert.alert('Missing Steps', 'Add at least one step with a title before posting.');
+      const msg = 'Add at least one step with a title before posting.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Missing Steps', msg);
       return;
     }
 
-    // 1. Guardrail: All ingredients must be assigned to at least one step
-    if (unassignedIngredients.length > 0) {
-      const formattedList = unassignedIngredients.map((ing) => `• ${ing}`).join('\n');
-      Alert.alert(
-        'Unassigned Ingredients Detected',
-        `All ingredients must be assigned to a recipe step.\n\nThe following ingredients are not assigned yet:\n${formattedList}\n\nPlease select which step uses them before posting.`,
-        [{ text: 'OK' }]
-      );
-      return;
+    // Auto-assign any unassigned ingredients to the first step
+    if (unassignedIngredients.length > 0 && steps.length > 0) {
+      const updatedSteps = [...steps];
+      const firstStepList = updatedSteps[0].usedIngredients || [];
+      const merged = Array.from(new Set([...firstStepList, ...unassignedIngredients]));
+      updatedSteps[0] = { ...updatedSteps[0], usedIngredients: merged };
+      setSteps(updatedSteps);
     }
 
-    // 2. Guardrail: Timer fully occupied check for heat steps
-    if (remainingSeconds > 0) {
-      setShowTimerPromptModal(true);
-      return;
-    }
+    // Auto-sync recipe duration to total occupied heat seconds
+    const finalDuration = totalOccupiedTime > 0 ? totalOccupiedTime : totalRecipeSeconds;
 
-    await executePostRecipe();
+    await executePostRecipe(finalDuration);
   };
 
   const handleAutoAdjustRecipeTime = async () => {
