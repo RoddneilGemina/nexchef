@@ -68,10 +68,17 @@ const mapPost = (p: any, sessionUserId?: string) => ({
   post_type: p.post_type || 'text',
   recipe_title: p.recipe_title || null,
   total_duration: p.total_duration ?? null,
-  recipe_ingredients: p.recipe_ingredients || [],
-  recipe_steps: (p.recipe_steps || []).sort(
-    (a: any, b: any) => (a.step_number || 0) - (b.step_number || 0)
-  ),
+  recipe_steps: (p.recipe_steps || [])
+    .map((s: any) => ({
+      ...s,
+      step_type: s.step_type || (s.duration === 0 ? 'prep' : 'heat'),
+      stepType: s.step_type || (s.duration === 0 ? 'prep' : 'heat'),
+      used_ingredients: s.used_ingredients || [],
+      usedIngredients: s.used_ingredients || [],
+      sub_actions: s.sub_actions || [],
+      subActions: s.sub_actions || [],
+    }))
+    .sort((a: any, b: any) => (a.step_number || 0) - (b.step_number || 0)),
 });
 
 export const backendAPI = {
@@ -329,8 +336,35 @@ export const backendAPI = {
         throw new Error('Add at least one step with a title before posting.');
       }
 
+      // Try inserting with extended columns first
       const { error: stepError } = await supabase.from('recipe_steps').insert(validSteps);
-      if (stepError) throw new Error(stepError.message);
+
+      if (stepError) {
+        // If Supabase schema cache does not have step_type / sub_actions / used_ingredients columns yet:
+        const isSchemaError =
+          stepError.message.includes('step_type') ||
+          stepError.message.includes('sub_actions') ||
+          stepError.message.includes('used_ingredients') ||
+          stepError.message.includes('schema cache') ||
+          stepError.code === 'PGRST204';
+
+        if (isSchemaError) {
+          // Fallback insert with standard base columns
+          const fallbackSteps = validSteps.map(({ post_id, step_number, title, description, start_time, duration }) => ({
+            post_id,
+            step_number,
+            title,
+            description,
+            start_time,
+            duration,
+          }));
+
+          const { error: fallbackError } = await supabase.from('recipe_steps').insert(fallbackSteps);
+          if (fallbackError) throw new Error(fallbackError.message);
+        } else {
+          throw new Error(stepError.message);
+        }
+      }
     },
     createPost: async (caption: string, imageUrl: string | null): Promise<void> => {
       if (HAS_SUPABASE) {
