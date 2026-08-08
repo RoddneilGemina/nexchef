@@ -170,6 +170,9 @@ export default function CreateRecipeScreen() {
 
           if (params.liveTitle) {
             setTitle(params.liveTitle);
+            setCaption(`Live recorded recipe session for ${params.liveTitle}`);
+          } else {
+            setCaption('Live recorded recipe session');
           }
 
           if (params.liveHeatSeconds) {
@@ -434,24 +437,29 @@ export default function CreateRecipeScreen() {
 
   const executePostRecipe = async (overrideTotalSeconds?: number) => {
     const finalTotalSeconds = overrideTotalSeconds ?? totalRecipeSeconds;
+    const finalTitle = title.trim() || 'Live Recorded Recipe';
+    const finalCaption = caption.trim() || `Live recorded recipe session for ${finalTitle}`;
+    const validIngredients = ingredients.filter((i) => i.name.trim());
+
     const stepsToPost = stepsWithTiming
       .filter((s) => s.title.trim())
       .map((s) => ({
         ...s,
         duration: s.stepType === 'prep' ? 0 : s.duration,
         step_type: s.stepType,
+        sub_actions: s.subActions || [],
       }));
 
     setIsSubmitting(true);
     try {
       await backendAPI.posts.createRecipe(
-        title.trim(),
-        caption.trim(),
+        finalTitle,
+        finalCaption,
         finalTotalSeconds,
-        ingredients,
+        validIngredients,
         stepsToPost
       );
-      router.back();
+      router.replace('/(tabs)');
     } catch (e: any) {
       if (Platform.OS === 'web') window.alert(e.message);
       else Alert.alert('Error', e.message);
@@ -462,10 +470,16 @@ export default function CreateRecipeScreen() {
   };
 
   const handlePostRecipe = async () => {
-    if (!title.trim() || !caption.trim()) {
-      Alert.alert('Missing Info', 'Please provide a recipe title and caption.');
-      return;
+    const finalTitle = title.trim() || 'Live Recorded Recipe';
+    const finalCaption = caption.trim() || `Live recorded recipe session for ${finalTitle}`;
+
+    if (!title.trim()) {
+      setTitle(finalTitle);
     }
+    if (!caption.trim()) {
+      setCaption(finalCaption);
+    }
+
     const stepsToPost = stepsWithTiming.filter((s) => s.title.trim());
     if (stepsToPost.length === 0) {
       Alert.alert('Missing Steps', 'Add at least one step with a title before posting.');

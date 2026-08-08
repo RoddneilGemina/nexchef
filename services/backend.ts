@@ -319,7 +319,10 @@ export const backendAPI = {
           title: s.title.trim(),
           description: (s.description || '').trim(),
           start_time: s.start_time ?? 0,
-          duration: Math.max(1, s.duration ?? 0),
+          duration: s.step_type === 'prep' || s.stepType === 'prep' ? 0 : Math.max(0, s.duration ?? 0),
+          step_type: s.step_type || s.stepType || 'heat',
+          used_ingredients: s.used_ingredients || s.usedIngredients || [],
+          sub_actions: s.sub_actions || s.subActions || [],
         }));
 
       if (validSteps.length === 0) {
