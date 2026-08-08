@@ -10,7 +10,8 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { SubActionReminder } from '@/types/post';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors, Spacing, Radius } from '@/constants/theme';
@@ -128,11 +129,17 @@ interface StepItemState {
   description: string;
   duration: number;
   usedIngredients: string[];
+  subActions?: SubActionReminder[];
 }
 
 export default function CreateRecipeScreen() {
   const theme = useColorScheme() ?? 'light';
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    liveTitle?: string;
+    liveSteps?: string;
+    liveHeatSeconds?: string;
+  }>();
 
   // Wizard state: 0 = Info, 1 = Ingredients, 2 = Steps
   const [step, setStep] = useState(0);
@@ -153,6 +160,33 @@ export default function CreateRecipeScreen() {
     { action: 'prep', stepType: 'prep', title: 'Prep ingredients', description: 'Chop and measure ingredients', duration: 0, usedIngredients: [] },
     { action: 'saute', stepType: 'heat', title: 'Sauté aromatics', description: 'Sauté in hot oil', duration: 180, usedIngredients: [] },
   ]);
+
+  useEffect(() => {
+    if (params.liveSteps) {
+      try {
+        const parsed = JSON.parse(params.liveSteps);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSteps(parsed);
+
+          if (params.liveTitle) {
+            setTitle(params.liveTitle);
+          }
+
+          if (params.liveHeatSeconds) {
+            const totalSecs = parseInt(params.liveHeatSeconds, 10) || 0;
+            if (totalSecs > 0) {
+              const { h, m, s } = secondsToTime(totalSecs);
+              setRecipeDuration({ h, m, s });
+            }
+          }
+
+          setStep(1); // Jump to ingredients tab
+        }
+      } catch (e) {
+        console.error('Failed to parse liveSteps', e);
+      }
+    }
+  }, [params.liveSteps, params.liveTitle, params.liveHeatSeconds]);
 
   const totalRecipeSeconds = useMemo(
     () => timeToSeconds(recipeDuration.h, recipeDuration.m, recipeDuration.s),

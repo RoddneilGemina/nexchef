@@ -211,20 +211,35 @@ export default function LiveRecordScreen() {
 
   const handleExportToBuilder = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert(
-      'Export Complete!',
-      'Recorded steps and sub-action reminders have been exported.',
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            setIsRecording(false);
-            setIsReviewPhase(false);
-            router.back();
-          },
-        },
-      ]
+
+    if (checkpoints.length === 0) {
+      Alert.alert('No Checkpoints', 'Please record at least one step checkpoint before exporting.');
+      return;
+    }
+
+    const exportedSteps = checkpoints.map((cp, idx) => ({
+      title: cp.title.trim() || `Step ${idx + 1}`,
+      description: cp.description || '',
+      duration: cp.stepType === 'prep' ? 0 : cp.duration,
+      stepType: cp.stepType,
+      subActions: cp.subActions || [],
+      usedIngredients: [],
+    }));
+
+    const totalHeatSeconds = exportedSteps.reduce(
+      (acc, s) => acc + (s.stepType === 'prep' ? 0 : s.duration),
+      0
     );
+
+    // Export to Recipe Builder wizard
+    router.replace({
+      pathname: '/recipe/create',
+      params: {
+        liveTitle: recipeTitle.trim(),
+        liveSteps: JSON.stringify(exportedSteps),
+        liveHeatSeconds: totalHeatSeconds.toString(),
+      },
+    });
   };
 
   const borderColor = isDark ? '#333' : '#e5e5e5';
