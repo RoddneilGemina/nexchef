@@ -404,18 +404,47 @@ export default function CookModeScreen() {
                   {activeSubActions.map((sub) => {
                     const bgColor = getSubActionColor(sub.type);
                     const iconName = getSubActionIcon(sub.type);
+                    const isStir = sub.type === 'stir';
+                    const isFlip = sub.type === 'flip';
+
                     return (
-                      <View key={sub.id} style={[styles.subActionNoticeBanner, { backgroundColor: bgColor }]}>
-                        <Ionicons name={iconName as any} size={24} color="#fff" />
-                        <View style={{ flex: 1 }}>
-                          <ThemedText style={styles.subActionNoticeTitle}>
-                            {sub.type === 'stir'
-                              ? '⚡ STIR INGREDIENTS NOW!'
-                              : sub.type === 'flip'
-                              ? '⚡ FLIP FOOD NOW!'
-                              : `${sub.type.toUpperCase()} REMINDER`}
-                          </ThemedText>
+                      <View
+                        key={sub.id}
+                        style={[
+                          styles.subActionNoticeBanner,
+                          {
+                            backgroundColor: bgColor,
+                            borderColor: isFlip ? '#FCA5A5' : isStir ? '#FDE68A' : '#93C5FD',
+                            shadowColor: bgColor,
+                          },
+                        ]}
+                      >
+                        <View style={styles.subActionIconWrap}>
+                          <Ionicons name={iconName as any} size={30} color="#fff" />
+                        </View>
+                        <View style={{ flex: 1, gap: 2 }}>
+                          <View style={styles.subActionTitleRow}>
+                            <ThemedText style={styles.subActionNoticeTitle}>
+                              {isStir
+                                ? '⚡ TIME TO STIR!'
+                                : isFlip
+                                ? '⚡ TIME TO FLIP!'
+                                : `⚡ ${sub.type.toUpperCase()} REMINDER!`}
+                            </ThemedText>
+                            <View style={styles.subActionLivePill}>
+                              <ThemedText style={styles.subActionLivePillText}>NOW</ThemedText>
+                            </View>
+                          </View>
                           <ThemedText style={styles.subActionNoticeText}>{sub.label}</ThemedText>
+                          {sub.endOffsetSeconds ? (
+                            <ThemedText style={styles.subActionTimeWindowText}>
+                              Stirring Window: {formatClock(sub.startOffsetSeconds)} - {formatClock(sub.endOffsetSeconds)}
+                            </ThemedText>
+                          ) : (
+                            <ThemedText style={styles.subActionTimeWindowText}>
+                              Action Timestamp: {formatClock(sub.startOffsetSeconds)}
+                            </ThemedText>
+                          )}
                         </View>
                       </View>
                     );
@@ -742,33 +771,67 @@ const styles = StyleSheet.create({
   // Sub-action Notice Overlay Box
   subActionNoticeBox: {
     width: '100%',
-    marginVertical: Spacing.xs,
-    gap: 6,
+    marginVertical: Spacing.md,
+    gap: Spacing.sm,
   },
   subActionNoticeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: Radius.md,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
+    paddingVertical: 16,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  subActionIconWrap: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  subActionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
   },
   subActionNoticeTitle: {
     color: '#fff',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.6,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    flex: 1,
+  },
+  subActionLivePill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.sm,
+  },
+  subActionLivePillText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
   },
   subActionNoticeText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
-    marginTop: 1,
+    lineHeight: 20,
+  },
+  subActionTimeWindowText: {
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+    fontVariant: ['tabular-nums'],
   },
 
   // Untimed Prep Step Card View
