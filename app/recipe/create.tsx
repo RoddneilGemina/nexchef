@@ -480,6 +480,14 @@ export default function CreateRecipeScreen() {
       setCaption(finalCaption);
     }
 
+    if (masterIngredientNames.length === 0) {
+      const msg = 'All recipes must include at least one ingredient. Please add the ingredients required for your recipe.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Missing Ingredients', msg);
+      setStep(1); // Return user to ingredients step
+      return;
+    }
+
     const stepsToPost = stepsWithTiming.filter((s) => s.title.trim());
     if (stepsToPost.length === 0) {
       const msg = 'Add at least one step with a title before posting.';

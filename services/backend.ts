@@ -304,18 +304,20 @@ export const backendAPI = {
       if (postError) throw new Error(postError.message);
 
       // 2. Insert ingredients
-      const validIngredients = ingredients.filter(i => i.name.trim());
-      if (validIngredients.length > 0) {
-        const { error: ingError } = await supabase.from('recipe_ingredients').insert(
-          validIngredients.map(ing => ({
-            post_id: post.id,
-            name: ing.name.trim(),
-            quantity: ing.quantity,
-            unit: ing.unit,
-          }))
-        );
-        if (ingError) throw new Error(ingError.message);
+      const validIngredients = ingredients.filter(i => i.name && i.name.trim());
+      if (validIngredients.length === 0) {
+        throw new Error('All recipes must include at least one ingredient.');
       }
+
+      const { error: ingError } = await supabase.from('recipe_ingredients').insert(
+        validIngredients.map(ing => ({
+          post_id: post.id,
+          name: ing.name.trim(),
+          quantity: ing.quantity || '1',
+          unit: ing.unit || 'g',
+        }))
+      );
+      if (ingError) throw new Error(ingError.message);
 
       // 3. Insert steps (sequential timing with durations)
       const validSteps = steps
