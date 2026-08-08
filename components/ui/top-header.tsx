@@ -38,15 +38,27 @@ export function TopHeader() {
               onPress={() => { setShowAddMenu(false); router.push('/post/create'); }}
             >
               <Ionicons name="document-text-outline" size={18} color={Colors[theme].text} />
-              <ThemedText>Text Post</ThemedText>
+              <ThemedText style={styles.dropdownText}>Make Post</ThemedText>
             </Pressable>
+
             <View style={{ height: 1, backgroundColor: theme === 'dark' ? '#444' : '#eee' }} />
+
             <Pressable 
               style={styles.dropdownItem} 
               onPress={() => { setShowAddMenu(false); router.push('/recipe/create'); }}
             >
               <Ionicons name="restaurant-outline" size={18} color={Colors[theme].text} />
-              <ThemedText>Recipe</ThemedText>
+              <ThemedText style={styles.dropdownText}>Write Recipe</ThemedText>
+            </Pressable>
+
+            <View style={{ height: 1, backgroundColor: theme === 'dark' ? '#444' : '#eee' }} />
+
+            <Pressable 
+              style={styles.dropdownItem} 
+              onPress={() => { setShowAddMenu(false); router.push('/recipe/live-record'); }}
+            >
+              <Ionicons name="videocam-outline" size={18} color="#FF8C00" />
+              <ThemedText style={[styles.dropdownText, { color: '#FF8C00', fontWeight: 'bold' }]}>Live Cooking</ThemedText>
             </Pressable>
           </View>
         )}
@@ -80,17 +92,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.md,
     shadowColor: '#000',
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 10,
-    elevation: 5,
-    minWidth: 140,
+    elevation: 8,
+    minWidth: 165,
     zIndex: 100,
   },
   dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 12,
     gap: Spacing.sm,
+  },
+  dropdownText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   logoContainer: {
     flexDirection: 'row',
