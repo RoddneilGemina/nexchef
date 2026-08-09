@@ -7,14 +7,16 @@ import {
   TextInput,
   Alert,
   SafeAreaView,
+  Platform,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useNavigation } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { SubActionReminder } from '@/types/post';
+import { ConfirmExitModal } from '@/components/ui/confirm-exit-modal';
 
 interface LiveCheckpoint {
   id: string;
@@ -36,7 +38,12 @@ const formatClock = (totalSeconds: number) => {
 export default function LiveRecordScreen() {
   const theme = useColorScheme() ?? 'light';
   const router = useRouter();
+  const navigation = useNavigation();
   const isDark = theme === 'dark';
+  const isExportingRef = useRef(false);
+
+  const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
+  const pendingActionRef = useRef<any>(null);
 
   // Recipe Meta
   const [recipeTitle, setRecipeTitle] = useState('');
@@ -55,6 +62,34 @@ export default function LiveRecordScreen() {
   // Sub-action Tracking
   const [activeStirringStart, setActiveStirringStart] = useState<number | null>(null);
   const [currentStepSubActions, setCurrentStepSubActions] = useState<SubActionReminder[]>([]);
+
+  // Exit Confirmation Listener (Custom Modal Popup)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (isExportingRef.current || (!isRecording && checkpoints.length === 0 && !recipeTitle.trim())) {
+        return;
+      }
+
+      e.preventDefault();
+      pendingActionRef.current = e.data.action;
+      setShowExitConfirmModal(true);
+    });
+
+    return unsubscribe;
+  }, [navigation, isRecording, checkpoints.length, recipeTitle]);
+
+  const handleConfirmExit = () => {
+    setShowExitConfirmModal(false);
+    if (pendingActionRef.current) {
+      navigation.dispatch(pendingActionRef.current);
+      pendingActionRef.current = null;
+    }
+  };
+
+  const handleCancelExit = () => {
+    setShowExitConfirmModal(false);
+    pendingActionRef.current = null;
+  };
 
   // Main Recording Interval
   useEffect(() => {
@@ -232,6 +267,7 @@ export default function LiveRecordScreen() {
     );
 
     // Export to Recipe Builder wizard
+    isExportingRef.current = true;
     router.replace({
       pathname: '/recipe/create',
       params: {
@@ -522,6 +558,16 @@ export default function LiveRecordScreen() {
           </View>
         </ScrollView>
       )}
+
+      <ConfirmExitModal
+        visible={showExitConfirmModal}
+        title="Exit Live Cooking?"
+        message="Are you sure you want to leave? Your live recording session and step progress will be lost."
+        confirmText="Discard & Exit"
+        cancelText="Stay"
+        onConfirm={handleConfirmExit}
+        onCancel={handleCancelExit}
+      />
     </SafeAreaView>
   );
 }

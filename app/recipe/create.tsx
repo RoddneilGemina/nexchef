@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -10,7 +10,7 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { SubActionReminder } from '@/types/post';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -19,6 +19,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
 import { backendAPI } from '@/services/backend';
 import Slider from '@react-native-community/slider';
+import { ConfirmExitModal } from '@/components/ui/confirm-exit-modal';
 import {
   COOKING_ACTIONS,
   MEASUREMENT_UNITS,
@@ -135,6 +136,8 @@ interface StepItemState {
 export default function CreateRecipeScreen() {
   const theme = useColorScheme() ?? 'light';
   const router = useRouter();
+  const navigation = useNavigation();
+  const isSubmittingRef = useRef(false);
   const params = useLocalSearchParams<{
     liveTitle?: string;
     liveSteps?: string;
@@ -160,6 +163,45 @@ export default function CreateRecipeScreen() {
     { action: 'prep', stepType: 'prep', title: 'Prep ingredients', description: 'Chop and measure ingredients', duration: 0, usedIngredients: [] },
     { action: 'saute', stepType: 'heat', title: 'Sauté aromatics', description: 'Sauté in hot oil', duration: 180, usedIngredients: [] },
   ]);
+
+  const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
+  const pendingActionRef = useRef<any>(null);
+
+  const hasUnsavedChanges = useMemo(() => {
+    return (
+      title.trim() !== '' ||
+      caption.trim() !== '' ||
+      ingredients.some((i) => i.name.trim() !== '') ||
+      steps.some((s) => s.title.trim() !== '')
+    );
+  }, [title, caption, ingredients, steps]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (isSubmittingRef.current || !hasUnsavedChanges) {
+        return;
+      }
+
+      e.preventDefault();
+      pendingActionRef.current = e.data.action;
+      setShowExitConfirmModal(true);
+    });
+
+    return unsubscribe;
+  }, [navigation, hasUnsavedChanges]);
+
+  const handleConfirmExit = () => {
+    setShowExitConfirmModal(false);
+    if (pendingActionRef.current) {
+      navigation.dispatch(pendingActionRef.current);
+      pendingActionRef.current = null;
+    }
+  };
+
+  const handleCancelExit = () => {
+    setShowExitConfirmModal(false);
+    pendingActionRef.current = null;
+  };
 
   useEffect(() => {
     if (params.liveSteps) {
@@ -451,6 +493,7 @@ export default function CreateRecipeScreen() {
       }));
 
     setIsSubmitting(true);
+    isSubmittingRef.current = true;
     try {
       await backendAPI.posts.createRecipe(
         finalTitle,
@@ -461,6 +504,7 @@ export default function CreateRecipeScreen() {
       );
       router.replace('/(tabs)');
     } catch (e: any) {
+      isSubmittingRef.current = false;
       if (Platform.OS === 'web') window.alert(e.message);
       else Alert.alert('Error', e.message);
     } finally {
@@ -1267,6 +1311,16 @@ export default function CreateRecipeScreen() {
           </View>
         </View>
       </Modal>
+
+      <ConfirmExitModal
+        visible={showExitConfirmModal}
+        title="Discard Recipe Draft?"
+        message="Are you sure you want to leave? Your recipe draft will be lost."
+        confirmText="Discard Draft"
+        cancelText="Keep Editing"
+        onConfirm={handleConfirmExit}
+        onCancel={handleCancelExit}
+      />
     </ThemedView>
   );
 }

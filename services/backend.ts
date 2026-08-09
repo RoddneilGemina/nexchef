@@ -462,7 +462,9 @@ export const backendAPI = {
     },
     getFeed: async (): Promise<any[]> => {
       if (HAS_SUPABASE) {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: userData } = await supabase.auth.getUser();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const activeUserId = userData?.user?.id || sessionData?.session?.user?.id;
         
         const { data, error } = await supabase
           .from('posts')
@@ -470,7 +472,7 @@ export const backendAPI = {
           .order('created_at', { ascending: false });
         if (error) throw new Error(error.message);
         
-        return data.map((p) => mapPost(p, session?.user?.id));
+        return data.map((p) => mapPost(p, activeUserId));
       }
       
       // Fallback
@@ -507,7 +509,9 @@ export const backendAPI = {
     },
     getUserPosts: async (userId: string): Promise<any[]> => {
       if (HAS_SUPABASE) {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: userData } = await supabase.auth.getUser();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const activeUserId = userData?.user?.id || sessionData?.session?.user?.id;
         
         const { data, error } = await supabase
           .from('posts')
@@ -516,7 +520,7 @@ export const backendAPI = {
           .order('created_at', { ascending: false });
         if (error) throw new Error(error.message);
         
-        return data.map((p) => mapPost(p, session?.user?.id));
+        return data.map((p) => mapPost(p, activeUserId));
       }
       
       // Fallback
@@ -552,7 +556,9 @@ export const backendAPI = {
     },
     getPost: async (id: string): Promise<any> => {
       if (HAS_SUPABASE) {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: userData } = await supabase.auth.getUser();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const activeUserId = userData?.user?.id || sessionData?.session?.user?.id;
         
         const { data, error } = await supabase
           .from('posts')
@@ -561,7 +567,7 @@ export const backendAPI = {
           .single();
         if (error) throw new Error(error.message);
         
-        return mapPost(data, session?.user?.id);
+        return mapPost(data, activeUserId);
       }
       
       // Fallback
@@ -581,25 +587,75 @@ export const backendAPI = {
         post_type: 'text'
       };
     },
-    toggleCheer: async (postId: string, currentlyCheered: boolean): Promise<void> => {
+    toggleCheer: async (
+      postId: string,
+      currentlyCheered?: boolean
+    ): Promise<{ has_cheered: boolean; cheers_count: number }> => {
       if (HAS_SUPABASE) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) throw new Error('Not authenticated');
+        const { data: userData } = await supabase.auth.getUser();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const activeUserId = userData?.user?.id || sessionData?.session?.user?.id;
+        if (!activeUserId) throw new Error('Not authenticated');
 
-        if (currentlyCheered) {
-          // Remove cheer
-          const { error } = await supabase.from('post_cheers')
+        // 1. Query database directly to check existing cheer record
+        const { data: existingCheer } = await supabase
+          .from('post_cheers')
+          .select('id')
+          .eq('post_id', postId)
+          .eq('user_id', activeUserId)
+          .maybeSingle();
+
+        const isCurrentlyCheeredInDb = !!existingCheer;
+
+        if (isCurrentlyCheeredInDb || currentlyCheered === true) {
+          // Remove cheer from database
+          const { error: deleteErr } = await supabase
+            .from('post_cheers')
             .delete()
             .eq('post_id', postId)
-            .eq('user_id', session.user.id);
-          if (error) throw new Error(error.message);
+            .eq('user_id', activeUserId);
+
+          if (deleteErr) {
+            console.error('Delete cheer error:', deleteErr.message);
+            throw new Error(deleteErr.message);
+          }
         } else {
-          // Add cheer
-          const { error } = await supabase.from('post_cheers')
-            .insert({ post_id: postId, user_id: session.user.id });
-          if (error) throw new Error(error.message);
+          // Add cheer to database
+          const { error: insertErr } = await supabase
+            .from('post_cheers')
+            .insert({ post_id: postId, user_id: activeUserId });
+
+          if (insertErr && insertErr.code !== '23505') {
+            console.error('Insert cheer error:', insertErr.message);
+            throw new Error(insertErr.message);
+          }
         }
+
+        // 2. Fetch authoritative count and user cheer state from database
+        const { count } = await supabase
+          .from('post_cheers')
+          .select('id', { count: 'exact', head: true })
+          .eq('post_id', postId);
+
+        const { data: checkCheered } = await supabase
+          .from('post_cheers')
+          .select('id')
+          .eq('post_id', postId)
+          .eq('user_id', activeUserId)
+          .maybeSingle();
+
+        return {
+          has_cheered: !!checkCheered,
+          cheers_count: count ?? 0,
+        };
       }
+
+      // Mock database fallback
+      const newlyCheered = !currentlyCheered;
+      return {
+        has_cheered: newlyCheered,
+        cheers_count: newlyCheered ? 1 : 0,
+      };
     }
   },
 

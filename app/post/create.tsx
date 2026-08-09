@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, TextInput, Pressable, Platform, ScrollView, ActivityIndicator, Alert } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useNavigation } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors, Spacing, Radius } from '@/constants/theme';
@@ -8,17 +8,51 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/context/auth';
 import { backendAPI } from '@/services/backend';
+import { ConfirmExitModal } from '@/components/ui/confirm-exit-modal';
 
 export default function CreatePostScreen() {
   const [caption, setCaption] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const theme = useColorScheme() ?? 'light';
   const router = useRouter();
+  const navigation = useNavigation();
   const { user } = useAuth();
+  const isSubmittingRef = useRef(false);
+
+  const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
+  const pendingActionRef = useRef<any>(null);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (isSubmittingRef.current || !caption.trim()) {
+        return;
+      }
+
+      e.preventDefault();
+      pendingActionRef.current = e.data.action;
+      setShowExitConfirmModal(true);
+    });
+
+    return unsubscribe;
+  }, [navigation, caption]);
+
+  const handleConfirmExit = () => {
+    setShowExitConfirmModal(false);
+    if (pendingActionRef.current) {
+      navigation.dispatch(pendingActionRef.current);
+      pendingActionRef.current = null;
+    }
+  };
+
+  const handleCancelExit = () => {
+    setShowExitConfirmModal(false);
+    pendingActionRef.current = null;
+  };
 
   const handlePost = async () => {
     if (!caption.trim()) return;
     setIsSubmitting(true);
+    isSubmittingRef.current = true;
     
     try {
       // Create the post using our backend facade
@@ -26,6 +60,7 @@ export default function CreatePostScreen() {
       
       router.back(); // Go back to the feed
     } catch (error: any) {
+      isSubmittingRef.current = false;
       if (Platform.OS === 'web') {
         window.alert(error.message);
       } else {
@@ -88,6 +123,16 @@ export default function CreatePostScreen() {
           <ThemedText style={styles.uploadText}>Tap to add an image</ThemedText>
         </Pressable>
       </ScrollView>
+
+      <ConfirmExitModal
+        visible={showExitConfirmModal}
+        title="Discard Post?"
+        message="Are you sure you want to leave? Your post draft will be lost."
+        confirmText="Discard"
+        cancelText="Keep Editing"
+        onConfirm={handleConfirmExit}
+        onCancel={handleCancelExit}
+      />
     </ThemedView>
   );
 }

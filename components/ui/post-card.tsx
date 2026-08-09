@@ -72,16 +72,20 @@ export function PostCard({ post, isDetailView = false, onPostUpdated, onPostDele
   const handleToggleCheer = async () => {
     const newlyCheered = !isCheered;
     setIsCheered(newlyCheered);
-    setCheersCount(prev => newlyCheered ? prev + 1 : prev - 1);
+    setCheersCount((prev) => (newlyCheered ? prev + 1 : Math.max(0, prev - 1)));
 
     try {
-      await backendAPI.posts.toggleCheer(post.id, isCheered);
+      const result = await backendAPI.posts.toggleCheer(post.id, isCheered);
+      if (result) {
+        setIsCheered(result.has_cheered);
+        setCheersCount(result.cheers_count);
+      }
       if (onPostUpdated) onPostUpdated();
     } catch (e) {
-      console.error(e);
+      console.error('Error toggling cheer:', e);
       // Revert optimism on failure
       setIsCheered(!newlyCheered);
-      setCheersCount(prev => newlyCheered ? prev - 1 : prev + 1);
+      setCheersCount((prev) => (newlyCheered ? Math.max(0, prev - 1) : prev + 1));
     }
   };
 

@@ -9,6 +9,21 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- Allow users to manage their own cheers
+DO $$ BEGIN
+  CREATE POLICY "Users can insert own cheers"
+    ON post_cheers FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can delete own cheers"
+    ON post_cheers FOR DELETE
+    USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 -- Allow post owners to remove cheers/comments tied to their posts
 DO $$ BEGIN
   CREATE POLICY "Post owners can delete cheers on their posts"
