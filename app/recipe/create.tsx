@@ -309,7 +309,13 @@ export default function CreateRecipeScreen() {
     setStep((prev) => prev + 1);
   };
 
-  const handleBack = () => setStep((prev) => prev - 1);
+  const handleBack = () => {
+    if (step > 0) {
+      setStep((prev) => prev - 1);
+    } else {
+      router.back();
+    }
+  };
 
   const handleAddIngredient = () =>
     setIngredients([...ingredients, { name: '', quantity: '', unit: 'g' }]);
@@ -1204,12 +1210,11 @@ export default function CreateRecipeScreen() {
       <Stack.Screen
         options={{
           title: step === 0 ? 'Recipe Info' : step === 1 ? 'Ingredients' : 'Steps',
-          headerLeft: () =>
-            step > 0 ? (
-              <Pressable onPress={handleBack} style={styles.headerBtn}>
-                <ThemedText style={{ color: '#FF8C00', fontSize: 16 }}>Back</ThemedText>
-              </Pressable>
-            ) : undefined,
+          headerLeft: () => (
+            <Pressable onPress={handleBack} style={styles.headerBtn}>
+              <Ionicons name="arrow-back" size={24} color={Colors[theme].text} />
+            </Pressable>
+          ),
           headerRight: () => (
             <Pressable
               onPress={step === 2 ? handlePostRecipe : handleNext}

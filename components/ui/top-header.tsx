@@ -50,16 +50,6 @@ export function TopHeader() {
               <Ionicons name="restaurant-outline" size={18} color={Colors[theme].text} />
               <ThemedText style={styles.dropdownText}>Write Recipe</ThemedText>
             </Pressable>
-
-            <View style={{ height: 1, backgroundColor: theme === 'dark' ? '#444' : '#eee' }} />
-
-            <Pressable 
-              style={styles.dropdownItem} 
-              onPress={() => { setShowAddMenu(false); router.push('/recipe/live-record'); }}
-            >
-              <Ionicons name="videocam-outline" size={18} color="#FF8C00" />
-              <ThemedText style={[styles.dropdownText, { color: '#FF8C00', fontWeight: 'bold' }]}>Live Cooking</ThemedText>
-            </Pressable>
           </View>
         )}
       </View>
