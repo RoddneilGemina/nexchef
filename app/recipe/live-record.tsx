@@ -255,9 +255,9 @@ export default function LiveRecordScreen() {
         }}
       />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {!isRecording ? (
-          // SETUP / START SCREEN
+      {!isRecording ? (
+        // SETUP / START SCREEN
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.startSection}>
             <View style={styles.heroBadge}>
               <Ionicons name="videocam" size={24} color="#FF8C00" />
@@ -283,125 +283,145 @@ export default function LiveRecordScreen() {
               <ThemedText style={styles.startBtnText}>Start Live Cooking Session</ThemedText>
             </Pressable>
           </View>
-        ) : !isReviewPhase ? (
-          // ACTIVE LIVE COOKING RECORDING VIEW (COMPACT)
-          <View style={styles.compactLiveSection}>
-            {/* Compact Header Bar */}
-            <View style={styles.compactHeaderBar}>
+        </ScrollView>
+      ) : !isReviewPhase ? (
+        // ACTIVE LIVE COOKING RECORDING VIEW (FIXED NON-OVERFLOW LAYOUT)
+        <View style={styles.liveActiveContainer}>
+          {/* 1. Main Session Timer Card (Big & Obvious Above) */}
+          <View style={[styles.mainTimerCard, { backgroundColor: cardBg, borderColor }]}>
+            <View style={styles.mainTimerHeaderRow}>
               <View style={styles.liveTag}>
                 <View style={styles.liveRedDot} />
-                <ThemedText style={styles.liveTagText}>LIVE</ThemedText>
+                <ThemedText style={styles.liveTagText}>LIVE SESSION</ThemedText>
               </View>
-              <ThemedText style={styles.totalTimerText}>
-                Session: <ThemedText style={styles.totalTimerBold}>{formatClock(totalElapsedTime)}</ThemedText>
-              </ThemedText>
-              <Pressable style={styles.pauseIconBtn} onPress={togglePauseSession}>
-                <Ionicons name={isPaused ? 'play' : 'pause'} size={18} color={Colors[theme].text} />
+              <Pressable style={styles.pauseBtn} onPress={togglePauseSession}>
+                <Ionicons name={isPaused ? 'play-circle' : 'pause-circle'} size={20} color="#FF8C00" />
+                <ThemedText style={styles.pauseBtnText}>{isPaused ? 'Resume' : 'Pause'}</ThemedText>
               </Pressable>
             </View>
 
-            {/* Active Step Card */}
-            <View style={[styles.activeStepCard, { backgroundColor: cardBg, borderColor }]}>
-              <View style={styles.stepHeaderRow}>
-                <View style={styles.stepPill}>
-                  <ThemedText style={styles.stepPillText}>STEP {currentStepNumber}</ThemedText>
-                </View>
-                <ThemedText style={styles.stepClockText}>{formatClock(currentStepElapsedTime)}</ThemedText>
+            <ThemedText style={styles.mainTimerClockText}>{formatClock(totalElapsedTime)}</ThemedText>
+            <ThemedText style={styles.mainTimerLabel}>Total Elapsed Session Time</ThemedText>
+          </View>
+
+          {/* 2. Active Step Card (Subtle Step Timer) */}
+          <View style={[styles.activeStepCard, { backgroundColor: cardBg, borderColor }]}>
+            <View style={styles.stepHeaderRow}>
+              <View style={styles.stepPill}>
+                <ThemedText style={styles.stepPillText}>STEP {currentStepNumber}</ThemedText>
               </View>
-
-              {/* Glowing Stirring Active Banner */}
-              {isStirring && (
-                <View style={styles.stirringActiveBanner}>
-                  <Ionicons name="sync" size={16} color="#fff" />
-                  <ThemedText style={styles.stirringActiveText}>
-                    Stirring in progress ({formatClock(currentStepElapsedTime - (activeStirringStart || 0))})
-                  </ThemedText>
-                </View>
-              )}
-
-              {/* Compact Action Buttons Row */}
-              <View style={styles.actionButtonsRow}>
-                {/* Stirring Toggle Button */}
-                <Pressable
-                  style={[
-                    styles.actionBtn,
-                    isStirring ? styles.actionBtnActiveStir : styles.actionBtnStir,
-                  ]}
-                  onPress={handleToggleStirring}
-                >
-                  <Ionicons name="sync-outline" size={16} color={isStirring ? '#fff' : '#FF8C00'} />
-                  <ThemedText style={[styles.actionBtnText, isStirring && styles.actionBtnTextActive]}>
-                    {isStirring ? 'End Stirring' : 'Start Stirring'}
-                  </ThemedText>
-                </Pressable>
-
-                {/* Flip Action Button (Disabled while stirring is active) */}
-                <Pressable
-                  style={[styles.actionBtn, styles.actionBtnFlip, isStirring && styles.actionBtnDisabled]}
-                  onPress={handleAddFlipAction}
-                  disabled={isStirring}
-                >
-                  <Ionicons name="restaurant-outline" size={16} color={isStirring ? '#bbb' : '#FF8C00'} />
-                  <ThemedText style={[styles.actionBtnText, isStirring && { color: '#bbb' }]}>
-                    Flip Food
-                  </ThemedText>
-                </Pressable>
-              </View>
-
-              {/* Logged sub-actions in current step */}
-              {currentStepSubActions.length > 0 && (
-                <View style={styles.loggedSubActionsRow}>
-                  {currentStepSubActions.map((sub) => (
-                    <View key={sub.id} style={styles.subActionChip}>
-                      <Ionicons
-                        name={sub.type === 'stir' ? 'sync' : 'restaurant'}
-                        size={12}
-                        color="#D97706"
-                      />
-                      <ThemedText style={styles.subActionChipText}>
-                        {sub.type === 'stir'
-                          ? `Stir (${formatClock(sub.startOffsetSeconds)} - ${formatClock(sub.endOffsetSeconds || 0)})`
-                          : `Flip (${formatClock(sub.startOffsetSeconds)})`}
-                      </ThemedText>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Primary Next Step Button */}
-              <Pressable style={styles.nextStepBtn} onPress={handleNextStep}>
-                <ThemedText style={styles.nextStepBtnText}>Next Step →</ThemedText>
-              </Pressable>
-            </View>
-
-            {/* Checkpoints Recorded Read-Only List */}
-            {checkpoints.length > 0 && (
-              <View style={styles.checkpointsSummaryBlock}>
-                <ThemedText style={styles.checkpointsSummaryTitle}>
-                  Recorded Checkpoints ({checkpoints.length}):
+              <View style={[styles.stepSubtleTimerPill, { backgroundColor: isDark ? '#2D2D2D' : '#F3F4F6' }]}>
+                <Ionicons name="timer-outline" size={14} color="#888" />
+                <ThemedText style={[styles.stepSubtleClockText, { color: isDark ? '#CCC' : '#555' }]}>
+                  Step: {formatClock(currentStepElapsedTime)}
                 </ThemedText>
-                {checkpoints.map((cp) => (
-                  <View key={cp.id} style={[styles.cpSummaryRow, { borderColor }]}>
-                    <View style={styles.cpSummaryBadge}>
-                      <ThemedText style={styles.cpSummaryBadgeText}>Step {cp.stepNumber}</ThemedText>
-                    </View>
-                    <ThemedText style={styles.cpSummaryTime}>{formatClock(cp.duration)}</ThemedText>
-                    <ThemedText style={styles.cpSummarySubCount}>
-                      {cp.subActions.length > 0 ? `${cp.subActions.length} actions` : 'No sub-actions'}
+              </View>
+            </View>
+
+            {/* Glowing Stirring Active Banner */}
+            {isStirring && (
+              <View style={styles.stirringActiveBanner}>
+                <Ionicons name="sync" size={14} color="#fff" />
+                <ThemedText style={styles.stirringActiveText}>
+                  Stirring in progress ({formatClock(currentStepElapsedTime - (activeStirringStart || 0))})
+                </ThemedText>
+              </View>
+            )}
+
+            {/* Action Buttons Row */}
+            <View style={styles.actionButtonsRow}>
+              {/* Stirring Toggle Button */}
+              <Pressable
+                style={[
+                  styles.actionBtn,
+                  isStirring ? styles.actionBtnActiveStir : styles.actionBtnStir,
+                ]}
+                onPress={handleToggleStirring}
+              >
+                <Ionicons name="sync-outline" size={15} color={isStirring ? '#fff' : '#FF8C00'} />
+                <ThemedText style={[styles.actionBtnText, isStirring && styles.actionBtnTextActive]}>
+                  {isStirring ? 'End Stirring' : 'Start Stirring'}
+                </ThemedText>
+              </Pressable>
+
+              {/* Flip Action Button (Disabled while stirring is active) */}
+              <Pressable
+                style={[styles.actionBtn, styles.actionBtnFlip, isStirring && styles.actionBtnDisabled]}
+                onPress={handleAddFlipAction}
+                disabled={isStirring}
+              >
+                <Ionicons name="restaurant-outline" size={15} color={isStirring ? '#bbb' : '#FF8C00'} />
+                <ThemedText style={[styles.actionBtnText, isStirring && { color: '#bbb' }]}>
+                  Flip Food
+                </ThemedText>
+              </Pressable>
+            </View>
+
+            {/* Logged sub-actions in current step */}
+            {currentStepSubActions.length > 0 && (
+              <View style={styles.loggedSubActionsRow}>
+                {currentStepSubActions.map((sub) => (
+                  <View key={sub.id} style={styles.subActionChip}>
+                    <Ionicons
+                      name={sub.type === 'stir' ? 'sync' : 'restaurant'}
+                      size={12}
+                      color="#D97706"
+                    />
+                    <ThemedText style={styles.subActionChipText}>
+                      {sub.type === 'stir'
+                        ? `Stir (${formatClock(sub.startOffsetSeconds)} - ${formatClock(sub.endOffsetSeconds || 0)})`
+                        : `Flip (${formatClock(sub.startOffsetSeconds)})`}
                     </ThemedText>
                   </View>
                 ))}
               </View>
             )}
 
-            {/* Finish Live Session Button */}
-            <Pressable style={styles.finishSessionBtn} onPress={handleFinishRecording}>
-              <Ionicons name="stop-circle-outline" size={20} color="#fff" />
-              <ThemedText style={styles.finishSessionBtnText}>Finish Live Cooking Session</ThemedText>
+            {/* Primary Next Step Button */}
+            <Pressable style={styles.nextStepBtn} onPress={handleNextStep}>
+              <ThemedText style={styles.nextStepBtnText}>Next Step →</ThemedText>
             </Pressable>
           </View>
-        ) : (
-          // POST-LIVE EDITING & REVIEW PHASE (After Live Session Finishes)
+
+          {/* 3. Checkpoints Recorded Read-Only Fixed Scrollable Container */}
+          <View style={[styles.checkpointsFixedBlock, { backgroundColor: cardBg, borderColor }]}>
+            <View style={styles.checkpointsHeaderRow}>
+              <ThemedText style={styles.checkpointsSummaryTitle}>
+                Recorded Checkpoints ({checkpoints.length}):
+              </ThemedText>
+              {checkpoints.length === 0 && (
+                <ThemedText style={styles.noCheckpointsText}>No steps completed yet</ThemedText>
+              )}
+            </View>
+
+            <ScrollView
+              style={styles.checkpointsScrollView}
+              nestedScrollEnabled={true}
+              showsVerticalScrollIndicator={true}
+            >
+              {checkpoints.map((cp) => (
+                <View key={cp.id} style={[styles.cpSummaryRow, { borderColor }]}>
+                  <View style={styles.cpSummaryBadge}>
+                    <ThemedText style={styles.cpSummaryBadgeText}>Step {cp.stepNumber}</ThemedText>
+                  </View>
+                  <ThemedText style={styles.cpSummaryTime}>{formatClock(cp.duration)}</ThemedText>
+                  <ThemedText style={styles.cpSummarySubCount}>
+                    {cp.subActions.length > 0 ? `${cp.subActions.length} actions` : 'No sub-actions'}
+                  </ThemedText>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* 4. Finish Live Session Button (Pinned at bottom) */}
+          <Pressable style={styles.finishSessionBtn} onPress={handleFinishRecording}>
+            <Ionicons name="stop-circle-outline" size={20} color="#fff" />
+            <ThemedText style={styles.finishSessionBtnText}>Finish Live Cooking Session</ThemedText>
+          </Pressable>
+        </View>
+      ) : (
+        // POST-LIVE EDITING & REVIEW PHASE (After Live Session Finishes)
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.reviewSection}>
             <View style={styles.reviewHeaderCard}>
               <Ionicons name="checkmark-done-circle" size={32} color="#10B981" />
@@ -500,8 +520,8 @@ export default function LiveRecordScreen() {
               <ThemedText style={styles.exportBtnText}>Export to Recipe Builder</ThemedText>
             </Pressable>
           </View>
-        )}
-      </ScrollView>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -530,29 +550,71 @@ const styles = StyleSheet.create({
   },
   startBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  // COMPACT LIVE RECORDING VIEW
-  compactLiveSection: { gap: Spacing.md },
-  compactHeaderBar: {
+  // ACTIVE LIVE RECORDING VIEW (FIXED NON-OVERFLOW LAYOUT)
+  liveActiveContainer: {
+    flex: 1,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+    justifyContent: 'space-between',
+  },
+
+  // 1. Big Main Session Timer Above
+  mainTimerCard: {
+    borderWidth: 1.5,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 12,
+    alignItems: 'center',
+    gap: 2,
+  },
+  mainTimerHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFF3E0',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: Radius.sm,
+    width: '100%',
   },
-  liveTag: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  liveTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+  },
   liveRedDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
   liveTagText: { fontSize: 11, fontWeight: '800', color: '#EF4444', letterSpacing: 0.5 },
-  totalTimerText: { fontSize: 13, color: '#666' },
-  totalTimerBold: { fontWeight: '700', color: '#FF8C00', fontVariant: ['tabular-nums'] },
-  pauseIconBtn: { padding: 4 },
+  pauseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.sm,
+    backgroundColor: '#FFF3E0',
+  },
+  pauseBtnText: { fontSize: 12, fontWeight: '700', color: '#FF8C00' },
+  mainTimerClockText: {
+    fontSize: 40,
+    fontWeight: '800',
+    color: '#FF8C00',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 1,
+  },
+  mainTimerLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
 
+  // 2. Active Step Card (Subtle Step Timer)
   activeStepCard: {
     borderWidth: 1.5,
     borderRadius: Radius.md,
     padding: Spacing.md,
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
   stepHeaderRow: {
     flexDirection: 'row',
@@ -566,10 +628,17 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
   },
   stepPillText: { fontSize: 12, fontWeight: '800', color: '#FF8C00' },
-  stepClockText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FF8C00',
+  stepSubtleTimerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.sm,
+  },
+  stepSubtleClockText: {
+    fontSize: 13,
+    fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
 
@@ -632,8 +701,23 @@ const styles = StyleSheet.create({
   },
   nextStepBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
-  checkpointsSummaryBlock: { gap: 6, marginTop: Spacing.xs },
+  // 3. Checkpoints List (Fixed container size with internal scroll)
+  checkpointsFixedBlock: {
+    flex: 1,
+    maxHeight: 145,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: 10,
+    gap: 6,
+  },
+  checkpointsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   checkpointsSummaryTitle: { fontSize: 12, fontWeight: '700', color: '#888' },
+  noCheckpointsText: { fontSize: 11, color: '#aaa', fontStyle: 'italic' },
+  checkpointsScrollView: { flex: 1 },
   cpSummaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -642,12 +726,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderWidth: 1,
     borderRadius: Radius.sm,
+    marginBottom: 6,
   },
   cpSummaryBadge: { backgroundColor: '#eee', paddingHorizontal: 6, paddingVertical: 2, borderRadius: Radius.sm },
   cpSummaryBadgeText: { fontSize: 11, fontWeight: '700', color: '#555' },
   cpSummaryTime: { fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
   cpSummarySubCount: { fontSize: 11, color: '#888', marginLeft: 'auto' },
 
+  // 4. Finish Session Button (Pinned at bottom)
   finishSessionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -656,7 +742,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#EF4444',
     paddingVertical: 13,
     borderRadius: Radius.full,
-    marginTop: Spacing.xs,
   },
   finishSessionBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
